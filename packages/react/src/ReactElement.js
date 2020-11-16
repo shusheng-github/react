@@ -143,18 +143,25 @@ function warnIfStringRefCannotBeAutoConverted(config) {
  * indicating filename, line number, and/or other information.
  * @internal
  */
+// ReactElement只是一个用来承载信息的容器
 const ReactElement = function(type, key, ref, self, source, owner, props) {
   const element = {
     // This tag allows us to uniquely identify this as a React Element
+    // uniquely identify  唯一识别
+    // uniquely  独特的
+    // identify  确定
     $$typeof: REACT_ELEMENT_TYPE,
 
     // Built-in properties that belong on the element
+    // 属于元素的内置属性
     type: type,
     key: key,
     ref: ref,
     props: props,
 
     // Record the component responsible for creating this element.
+    // 记录负责创建此元素的组件
+    // responsible   负责任的
     _owner: owner,
   };
 
@@ -383,6 +390,7 @@ export function createElement(type, config, children) {
 
   // Children can be more than one argument, and those are transferred onto
   // the newly allocated props object.
+  // Children可以是多个参数，并且可以传给这个新的已分配的props对象
   const childrenLength = arguments.length - 2;
   if (childrenLength === 1) {
     props.children = children;
