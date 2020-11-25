@@ -120,20 +120,29 @@ function FiberNode(
   mode: TypeOfMode,
 ) {
   // Instance
+  // Fiber对应组件的类型  Function/Class/Host...
   this.tag = tag;
+  // key属性
   this.key = key;
+  // 大部分情况同type，某些情况不同，比如FunctionComponents使用React.memo包裹
   this.elementType = null;
+  // 对于FunctionComponent，指函数本身，对于ClassComponent，指class，对于HostComponent，指DOM节点tagName
   this.type = null;
+  // Fiber对应的真实DOM节点
   this.stateNode = null;
 
   // Fiber
+  // 指向Fiber节点
   this.return = null;
+  // 指向子Fiber节点
   this.child = null;
+  // 指向右边第一个兄弟Fiber节点
   this.sibling = null;
   this.index = 0;
 
   this.ref = null;
 
+  // 保存了本次更新造成的状态改变相关信息
   this.pendingProps = pendingProps;
   this.memoizedProps = null;
   this.updateQueue = null;
@@ -149,9 +158,11 @@ function FiberNode(
   this.firstEffect = null;
   this.lastEffect = null;
 
+  // 调度优先相关
   this.lanes = NoLanes;
   this.childLanes = NoLanes;
 
+  // 指向该fiber在另一次更新时对应的fiber
   this.alternate = null;
 
   if (enableProfilerTimer) {

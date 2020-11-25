@@ -3074,6 +3074,11 @@ function remountFiber(
   }
 }
 
+// current 当前组件对应的Fiber节点 在上一次更新时的Fiber节点，即workInpRrogress.alternate
+// workInProress  当前组件对应的Fiber节点
+// renderLane 优先级相关，在讲解Scheduler时再讲解
+
+
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
