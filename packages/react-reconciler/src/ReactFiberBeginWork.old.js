@@ -1137,6 +1137,7 @@ function updateHostComponent(
   const prevProps = current !== null ? current.memoizedProps : null;
 
   let nextChildren = nextProps.children;
+  // 判断是否有子节点，是否需要继续递归，在只有(文本节点/)的时候可不再递归
   const isDirectTextChild = shouldSetTextContent(type, nextProps);
 
   if (isDirectTextChild) {
