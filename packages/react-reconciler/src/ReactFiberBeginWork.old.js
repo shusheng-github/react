@@ -231,6 +231,7 @@ if (__DEV__) {
   didWarnAboutDefaultPropsOnFunctionComponent = {};
 }
 
+// 创建子fiber节点
 export function reconcileChildren(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -238,10 +239,13 @@ export function reconcileChildren(
   renderLanes: Lanes,
 ) {
   if (current === null) {
-    // If this is a fresh new component that hasn't been rendered yet, we
-    // won't update its child set by applying minimal side-effects. Instead,
-    // we will add them all to the child before it gets rendered. That means
-    // we can optimize this reconciliation pass by not tracking side-effects.
+    // If this is a fresh new component that hasn't been rendered yet, 
+    // we won't update its child set by applying minimal side-effects. 
+    // 如果这是尚未渲染的新的新组件，则我们不会通过应用最小的副作用来更新其子集
+    // Instead, we will add them all to the child before it gets rendered. 
+    // 代替的是我们会在渲染子对象之前将它们全部添加到子对象中。
+    // That meanswe can optimize this reconciliation pass by not tracking side-effects.
+    // 那意味着我们可以通过不跟踪副作用来优化此和解流程。
     workInProgress.child = mountChildFibers(
       workInProgress,
       null,
@@ -1129,6 +1133,7 @@ function updateHostComponent(
   pushHostContext(workInProgress);
 
   if (current === null) {
+    // 尝试声明下一个hydra表实例
     tryToClaimNextHydratableInstance(workInProgress);
   }
 
@@ -1153,6 +1158,7 @@ function updateHostComponent(
   }
 
   markRef(current, workInProgress);
+  //  创建子fiber节点
   reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   return workInProgress.child;
 }
@@ -3313,10 +3319,13 @@ function beginWork(
   }
 
   // Before entering the begin phase, clear pending update priority.
-  // TODO: This assumes that we're about to evaluate the component and process
-  // the update queue. However, there's an exception: SimpleMemoComponent
-  // sometimes bails out later in the begin phase. This indicates that we should
-  // move this assignment out of the common path and into each branch.
+  //进入开始阶段之前，清楚挂起的更新优先级
+  // TODO: This assumes that we're about to evaluate the component and process the update queue. 
+  // 假设我们将要评估组件并处理更新队列。 
+  // However, there's an exception: SimpleMemoComponent sometimes bails out later in the begin phase. 
+  // 但是，有一个例外：SimpleMemoComponent有时会在开始阶段的后期崩溃。 
+  // This indicates that we should move this assignment out of the common path and into each branch.
+  // 这表明我们应该将此分配移出公共路径并移至每个分支。
   workInProgress.lanes = NoLanes;
 
   switch (workInProgress.tag) {
