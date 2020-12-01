@@ -1150,10 +1150,13 @@ function updateHostComponent(
     // case. We won't handle it as a reified child. We will instead handle
     // this in the host environment that also has access to this prop. That
     // avoids allocating another HostText fiber and traversing it.
+    // 特别说明例子，一个直接的文本子节点，这是常见的情况。我们不会将其作为正常的子元素处理。
+    // 我们将在这个宿主环境中允许处理这个prop。这样可以避免法分配和遍历另一个HostText的fiber节点
     nextChildren = null;
   } else if (prevProps !== null && shouldSetTextContent(type, prevProps)) {
     // If we're switching from a direct text child to a normal child, or to
     // empty, we need to schedule the text content to be reset.
+    // 如果我们要从直接文本子级转换为普通子级，或者将其转换为空，则需要安排要充值的文本内容；
     workInProgress.flags |= ContentReset;
   }
 
