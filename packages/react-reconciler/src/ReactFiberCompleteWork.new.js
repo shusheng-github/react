@@ -887,6 +887,7 @@ function completeWork(
         // "stack" as the parent. Then append children as we go in beginWork
         // or completeWork depending on whether we want to add them top->down or
         // bottom->up. Top->down is faster in IE11.
+        // wasHydrated和ssr服务端渲染相关
         const wasHydrated = popHydrationState(workInProgress);
         if (wasHydrated) {
           // TODO: Move this and createInstance step into the beginPhase
@@ -903,6 +904,7 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
+          // 创建对应的dom节点
           const instance = createInstance(
             type,
             newProps,
@@ -918,6 +920,7 @@ function completeWork(
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
+          // 最后为dom节点设置一些属性
           if (
             finalizeInitialChildren(
               instance,

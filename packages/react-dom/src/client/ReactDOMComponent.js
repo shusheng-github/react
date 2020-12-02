@@ -266,7 +266,7 @@ export function trapClickOnNonInteractiveElement(node: HTMLElement) {
   // TODO: Only do this for the relevant Safaris maybe?
   node.onclick = noop;
 }
-
+// 初始化dom操作
 function setInitialDOMProperties(
   tag: string,
   domElement: Element,

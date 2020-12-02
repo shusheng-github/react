@@ -285,6 +285,7 @@ export function createInstance(
   } else {
     parentNamespace = ((hostContext: any): HostContextProd);
   }
+  // 创建dom
   const domElement: Instance = createElement(
     type,
     props,

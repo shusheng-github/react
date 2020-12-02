@@ -197,6 +197,7 @@ export function setValueForProperty(
         sanitizeURL(attributeValue.toString());
       }
     }
+    // setAttribute方法，为属性赋值
     if (attributeNamespace) {
       node.setAttributeNS(attributeNamespace, attributeName, attributeValue);
     } else {
