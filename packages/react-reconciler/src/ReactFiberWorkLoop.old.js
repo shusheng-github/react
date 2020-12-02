@@ -1639,6 +1639,7 @@ function workLoopConcurrent() {
   }
 }
 
+// 执行工作单元
 function performUnitOfWork(unitOfWork: Fiber): void {
   // The current, flushed, state of this fiber is the alternate. Ideally
   // nothing should rely on this, but relying on it here means that we don't
@@ -1711,6 +1712,8 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
         // Append all the effects of the subtree and this fiber onto the effect
         // list of the parent. The completion order of the children affects the
         // side-effect order.
+        // 所有有effectTag的Fiber节点都会被追加在effectList中
+        // 最终形成一条以rootFiber.firstEffect为起点的单向链表。
         if (returnFiber.firstEffect === null) {
           returnFiber.firstEffect = completedWork.firstEffect;
         }

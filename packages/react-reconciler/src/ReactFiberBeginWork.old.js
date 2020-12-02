@@ -232,13 +232,19 @@ if (__DEV__) {
 }
 
 // 创建子fiber节点
+// 对于mount的组件，该方法会创建新的子Fiber节点
+// 对于update的组件，该方法会将当前组件与该组件在上次更新时对应的Fiber节点比较(Diff算法)，将比较结果生成新的Fiber节点
 export function reconcileChildren(
   current: Fiber | null,
   workInProgress: Fiber,
   nextChildren: any,
   renderLanes: Lanes,
 ) {
+  // 最终该方法会生成新的子Fiber节点并赋值给workInProgress.child，
+  // 作为本次beginWork返回值 (opens new window)，
+  // 并作为下次performUnitOfWork执行时workInProgress的传参
   if (current === null) {
+    // mount进入该逻辑
     // If this is a fresh new component that hasn't been rendered yet, 
     // we won't update its child set by applying minimal side-effects. 
     // 如果这是尚未渲染的新的新组件，则我们不会通过应用最小的副作用来更新其子集
@@ -253,6 +259,7 @@ export function reconcileChildren(
       renderLanes,
     );
   } else {
+    // update进入该逻辑
     // If the current child is the same as the work in progress, it means that
     // we haven't yet started any work on these children. Therefore, we use
     // the clone algorithm to create a copy of all the current children.
@@ -1156,7 +1163,7 @@ function updateHostComponent(
   } else if (prevProps !== null && shouldSetTextContent(type, prevProps)) {
     // If we're switching from a direct text child to a normal child, or to
     // empty, we need to schedule the text content to be reset.
-    // 如果我们要从直接文本子级转换为普通子级，或者将其转换为空，则需要安排要充值的文本内容；
+    // 如果我们要从直接文本子级转换为普通子级，或者将其转换为空，则需要安排要充值的文本内容
     workInProgress.flags |= ContentReset;
   }
 
@@ -3090,11 +3097,19 @@ function remountFiber(
   }
 }
 
+
+// current 当前组件对应的Fiber节点在上一次更新时的Fiber节点，即workInProgress.alternate
+// workInProgress  当前组件对应的Fiber节点
+// renderLanes  优先级相关，和Scheduler调度相关
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
   renderLanes: Lanes,
 ): Fiber | null {
+  // beginWorl函数的作用可以分为两部分：
+  // 1、uodate时，如果current存在，在满足一定条件时可以current节点，
+  // 这样就能克隆current.child作为workInProgress.child，而不需要新建workInProgress.child
+  // 2、mount时，除fiberRootnode意外，current === null。会根据fiber.tag不同，创建不同类型的子Fiber节点
   const updateLanes = workInProgress.lanes;
 
   if (__DEV__) {
@@ -3114,7 +3129,7 @@ function beginWork(
       );
     }
   }
-
+  // update时，如果current存在可优化路径，可以复用current(即上一次更新Fiber节点)
   if (current !== null) {
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
@@ -3129,6 +3144,7 @@ function beginWork(
       // This may be unset if the props are determined to be equal later (memo).
       didReceiveUpdate = true;
     } else if (!includesSomeLane(renderLanes, updateLanes)) {
+      // 该逻辑为当前Fiber节点优先级不够
       didReceiveUpdate = false;
       // This fiber does not have any pending work. Bailout without entering
       // the begin phase. There's still some bookkeeping we that needs to be done
@@ -3303,6 +3319,7 @@ function beginWork(
           return updateOffscreenComponent(current, workInProgress, renderLanes);
         }
       }
+      // 复用current
       return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
     } else {
       if ((current.flags & ForceUpdateForLegacySuspense) !== NoFlags) {
@@ -3330,7 +3347,8 @@ function beginWork(
   // This indicates that we should move this assignment out of the common path and into each branch.
   // 这表明我们应该将此分配移出公共路径并移至每个分支。
   workInProgress.lanes = NoLanes;
-
+  // mount时，根据tag的不同，创建不同的子Fiber节点
+  // mount时，新建子Fiber
   switch (workInProgress.tag) {
     case IndeterminateComponent: {
       return mountIndeterminateComponent(

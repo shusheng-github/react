@@ -153,7 +153,8 @@ let updateHostComponent;
 let updateHostText;
 if (supportsMutation) {
   // Mutation mode
-
+  // 变异模式
+  //  将子孙DOM节点插入刚生成的DOM节点中
   appendAllChildren = function(
     parent: Instance,
     workInProgress: Fiber,
@@ -162,6 +163,7 @@ if (supportsMutation) {
   ) {
     // We only have the top Fiber that was created but we need recurse down its
     // children to find all the terminal nodes.
+    // 我们只创建顶级(root根)fiber节点，但是我们需要递归其子级以找到所有终端节点
     let node = workInProgress.child;
     while (node !== null) {
       if (node.tag === HostComponent || node.tag === HostText) {
@@ -172,6 +174,8 @@ if (supportsMutation) {
         // If we have a portal child, then we don't want to traverse
         // down its children. Instead, we'll get insertions from each child in
         // the portal directly.
+        // 如果我们有一个门户网站子项，那么我们不想遍历其子项。 
+        // 取而代之的是，我们将从门户中的每个孩子那里直接获得插入。
       } else if (node.child !== null) {
         node.child.return = node;
         node = node.child;
@@ -248,7 +252,7 @@ if (supportsMutation) {
   };
 } else if (supportsPersistence) {
   // Persistent host tree mode
-
+  // 持久的host树模式
   appendAllChildren = function(
     parent: Instance,
     workInProgress: Fiber,
@@ -257,6 +261,7 @@ if (supportsMutation) {
   ) {
     // We only have the top Fiber that was created but we need recurse down its
     // children to find all the terminal nodes.
+    // 我们只创建顶级(root根)fiber节点，但是我们需要递归其子级以找到所有终端节点
     let node = workInProgress.child;
     while (node !== null) {
       // eslint-disable-next-line no-labels
@@ -700,6 +705,9 @@ function completeWork(
       popHostContext(workInProgress);
       const rootContainerInstance = getRootHostContainer();
       const type = workInProgress.type;
+      // 根据current === null判断是mount还是undate
+      // current为null是mount 否则是update
+      // update时，根据workInProgress.stateNode == null判断该Fiber节点是否存在对应的DOM节点
       if (current !== null && workInProgress.stateNode != null) {
         updateHostComponent(
           current,
@@ -753,12 +761,14 @@ function completeWork(
           );
 
           appendAllChildren(instance, workInProgress, false, false);
-
+          // // DOM节点赋值给fiber.stateNode
           workInProgress.stateNode = instance;
 
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
+          // 某些渲染器需要在初次安装时提交时间（例如，DOM渲染器支持某些元素的自动聚焦）。 确保安排此类渲染器用于以后的工作。
+          // 与update逻辑中的updateHostComponent类似的处理props的过程
           if (
             finalizeInitialChildren(
               instance,
