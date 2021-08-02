@@ -112,6 +112,7 @@ if (
   // thread, like user events. By default, it yields multiple times per frame.
   // It does not attempt to align with frame boundaries, since most tasks don't
   // need to be frame aligned; for those that do, use requestAnimationFrame.
+  // 时间切片：在浏览器每一帧的时间中，预留一些时间给JS线程，React利用这部分时间更新组，预留的初始时间是5ms
   let yieldInterval = 5;
   let deadline = 0;
 

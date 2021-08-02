@@ -533,9 +533,9 @@ function mountWorkInProgressHook(): Hook {
   const hook: Hook = {
     memoizedState: null,
 
-    baseState: null,
+    baseState: null, //初始数据
     baseQueue: null,
-    queue: null,
+    queue: null,  //队列
 
     next: null,
   };

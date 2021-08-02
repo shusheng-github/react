@@ -250,6 +250,7 @@ export function jsx(type, config, maybeKey) {
   }
 
   // Resolve default props
+  // 解决默认的props
   if (type && type.defaultProps) {
     const defaultProps = type.defaultProps;
     for (propName in defaultProps) {
@@ -356,6 +357,7 @@ export function createElement(type, config, children) {
   let propName;
 
   // Reserved names are extracted
+  // 提取保留名称
   const props = {};
 
   let key = null;
@@ -378,6 +380,7 @@ export function createElement(type, config, children) {
     self = config.__self === undefined ? null : config.__self;
     source = config.__source === undefined ? null : config.__source;
     // Remaining properties are added to a new props object
+    // 剩余的属性被添加到一个新的 props 对象中
     for (propName in config) {
       if (
         hasOwnProperty.call(config, propName) &&
