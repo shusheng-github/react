@@ -3074,7 +3074,7 @@ function remountFiber(
   }
 }
 
-// current 当前组件对应的Fiber节点 在上一次更新时的Fiber节点，即workInpRrogress.alternate
+// current 当前组件展示页面对应的Fiber节点 在上一次更新时的Fiber节点，即workInpRrogress.alternate
 // workInProress  当前组件对应的Fiber节点
 // renderLane 优先级相关，在讲解Scheduler时再讲解
 
@@ -3103,7 +3103,7 @@ function beginWork(
       );
     }
   }
-
+  // current !== null代表是update阶段，否则是mount阶段
   if (current !== null) {
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
@@ -3112,16 +3112,22 @@ function beginWork(
       oldProps !== newProps ||
       hasLegacyContextChanged() ||
       // Force a re-render if the implementation changed due to hot reload:
+      // 如果实现因热重载而改变，则强制重新渲染：
       (__DEV__ ? workInProgress.type !== current.type : false)
     ) {
       // If props or context changed, mark the fiber as having performed work.
       // This may be unset if the props are determined to be equal later (memo).
+      // 如果 props 或 context 发生变化，则将 Fiber 标记为已执行工作。
+       // 如果稍后确定道具相等（备忘录），则可能会取消设置。
       didReceiveUpdate = true;
     } else if (!includesSomeLane(renderLanes, updateLanes)) {
       didReceiveUpdate = false;
       // This fiber does not have any pending work. Bailout without entering
       // the begin phase. There's still some bookkeeping we that needs to be done
       // in this optimized path, mostly pushing stuff onto the stack.
+      // 这个Fiber没有任何待处理的工作。 
+      //无需进入即可进入开始阶段。 
+      //在这个优化的路径中，我们仍然需要做一些优化，主要是将东西推入堆栈。
       switch (workInProgress.tag) {
         case HostRoot:
           pushHostRootContext(workInProgress);
@@ -3199,6 +3205,7 @@ function beginWork(
               );
               // The primary children do not have pending work with sufficient
               // priority. Bailout.
+              // 主要孩子没有足够的待处理工作
               const child = bailoutOnAlreadyFinishedWork(
                 current,
                 workInProgress,
@@ -3282,6 +3289,7 @@ function beginWork(
           return updateOffscreenComponent(current, workInProgress, renderLanes);
         }
       }
+      // 复用current
       return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
     } else {
       if ((current.flags & ForceUpdateForLegacySuspense) !== NoFlags) {
@@ -3307,6 +3315,7 @@ function beginWork(
   // move this assignment out of the common path and into each branch.
   workInProgress.lanes = NoLanes;
 
+  // mount时，：根据tag的不同，创建不同的Fiber的节点
   switch (workInProgress.tag) {
     case IndeterminateComponent: {
       return mountIndeterminateComponent(
