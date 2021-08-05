@@ -43,7 +43,7 @@ import {
   getEventHandlerListeners,
 } from '../client/ReactDOMComponentTree';
 import {COMMENT_NODE} from '../shared/HTMLNodeType';
-import {batchedEventUpdates} from './ReactDOMUpdateBatching';
+import {batchedUpdates} from './ReactDOMUpdateBatching';
 import getListener from './getListener';
 import {passiveBrowserEventsSupported} from './checkPassiveEvents';
 
@@ -133,7 +133,7 @@ function extractEvents(
   // invalidates the heuristics of the event plugin. We
   // could alter all these plugins to work in such ways, but
   // that might cause other unknown side-effects that we
-  // can't forsee right now.
+  // can't foresee right now.
   if (shouldProcessPolyfillPlugins) {
     EnterLeaveEventPlugin.extractEvents(
       dispatchQueue,
@@ -551,7 +551,7 @@ export function dispatchEventForPluginEventSystem(
     if (
       enableLegacyFBSupport &&
       // If our event flags match the required flags for entering
-      // FB legacy mode and we are prcocessing the "click" event,
+      // FB legacy mode and we are processing the "click" event,
       // then we can defer the event to the "document", to allow
       // for legacy FB support, where the expected behavior was to
       // match React < 16 behavior of delegated clicks to the doc.
@@ -630,7 +630,7 @@ export function dispatchEventForPluginEventSystem(
     }
   }
 
-  batchedEventUpdates(() =>
+  batchedUpdates(() =>
     dispatchEventsForPlugins(
       domEventName,
       eventSystemFlags,

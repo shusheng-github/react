@@ -9,18 +9,21 @@
 
 import type {Fiber} from './ReactInternalTypes';
 import type {FiberRoot} from './ReactInternalTypes';
-import type {Lane, Lanes} from './ReactFiberLane';
+import type {Lane, Lanes} from './ReactFiberLane.old';
 import type {CapturedValue} from './ReactCapturedValue';
 import type {Update} from './ReactUpdateQueue.old';
 import type {Wakeable} from 'shared/ReactTypes';
 import type {SuspenseContext} from './ReactFiberSuspenseContext.old';
 
-import getComponentName from 'shared/getComponentName';
+import getComponentNameFromFiber from 'react-reconciler/src/getComponentNameFromFiber';
 import {
   ClassComponent,
   HostRoot,
   SuspenseComponent,
   IncompleteClassComponent,
+  FunctionComponent,
+  ForwardRef,
+  SimpleMemoComponent,
 } from './ReactWorkTags';
 import {
   DidCapture,
@@ -30,11 +33,18 @@ import {
   LifecycleEffectMask,
   ForceUpdateForLegacySuspense,
 } from './ReactFiberFlags';
+import {
+  supportsPersistence,
+  getOffscreenContainerProps,
+} from './ReactFiberHostConfig';
 import {shouldCaptureSuspense} from './ReactFiberSuspenseComponent.old';
-import {NoMode, BlockingMode, DebugTracingMode} from './ReactTypeOfMode';
+import {NoMode, ConcurrentMode, DebugTracingMode} from './ReactTypeOfMode';
 import {
   enableDebugTracing,
   enableSchedulingProfiler,
+  enableLazyContextPropagation,
+  enableUpdaterTracking,
+  enablePersistentOffscreenHostContainer,
 } from 'shared/ReactFeatureFlags';
 import {createCapturedValue} from './ReactCapturedValue';
 import {
@@ -56,18 +66,23 @@ import {
   markLegacyErrorBoundaryAsFailed,
   isAlreadyFailedLegacyErrorBoundary,
   pingSuspendedRoot,
+  restorePendingUpdaters,
 } from './ReactFiberWorkLoop.old';
+import {propagateParentContextChangesToDeferredTree} from './ReactFiberNewContext.old';
 import {logCapturedError} from './ReactFiberErrorLogger';
 import {logComponentSuspended} from './DebugTracing';
-import {markComponentSuspended} from './SchedulingProfiler';
-
+import {
+  markComponentRenderStopped,
+  markComponentSuspended,
+} from './SchedulingProfiler';
+import {isDevToolsPresent} from './ReactFiberDevToolsHook.old';
 import {
   SyncLane,
   NoTimestamp,
   includesSomeLane,
   mergeLanes,
   pickArbitraryLane,
-} from './ReactFiberLane';
+} from './ReactFiberLane.old';
 
 const PossiblyWeakMap = typeof WeakMap === 'function' ? WeakMap : Map;
 
@@ -101,8 +116,13 @@ function createClassErrorUpdate(
   if (typeof getDerivedStateFromError === 'function') {
     const error = errorInfo.value;
     update.payload = () => {
-      logCapturedError(fiber, errorInfo);
       return getDerivedStateFromError(error);
+    };
+    update.callback = () => {
+      if (__DEV__) {
+        markFailedErrorBoundaryForHotReloading(fiber);
+      }
+      logCapturedError(fiber, errorInfo);
     };
   }
 
@@ -112,6 +132,7 @@ function createClassErrorUpdate(
       if (__DEV__) {
         markFailedErrorBoundaryForHotReloading(fiber);
       }
+      logCapturedError(fiber, errorInfo);
       if (typeof getDerivedStateFromError !== 'function') {
         // To preserve the preexisting retry behavior of error boundaries,
         // we keep track of which ones already failed during this batch.
@@ -119,9 +140,6 @@ function createClassErrorUpdate(
         // TODO: Warn in strict mode if getDerivedStateFromError is
         // not defined.
         markLegacyErrorBoundaryAsFailed(this);
-
-        // Only log here if componentDidCatch is the only error boundary method defined
-        logCapturedError(fiber, errorInfo);
       }
       const error = errorInfo.value;
       const stack = errorInfo.stack;
@@ -137,15 +155,11 @@ function createClassErrorUpdate(
             console.error(
               '%s: Error boundaries should implement getDerivedStateFromError(). ' +
                 'In that method, return a state update to display an error message or fallback UI.',
-              getComponentName(fiber.type) || 'Unknown',
+              getComponentNameFromFiber(fiber) || 'Unknown',
             );
           }
         }
       }
-    };
-  } else if (__DEV__) {
-    update.callback = () => {
-      markFailedErrorBoundaryForHotReloading(fiber);
     };
   }
   return update;
@@ -172,6 +186,12 @@ function attachPingListener(root: FiberRoot, wakeable: Wakeable, lanes: Lanes) {
     // Memoize using the thread ID to prevent redundant listeners.
     threadIDs.add(lanes);
     const ping = pingSuspendedRoot.bind(null, root, wakeable, lanes);
+    if (enableUpdaterTracking) {
+      if (isDevToolsPresent) {
+        // If we have pending work still, restore the original updaters
+        restorePendingUpdaters(root, lanes);
+      }
+    }
     wakeable.then(ping, ping);
   }
 }
@@ -185,33 +205,62 @@ function throwException(
 ) {
   // The source fiber did not complete.
   sourceFiber.flags |= Incomplete;
-  // Its effect list is no longer valid.
-  sourceFiber.firstEffect = sourceFiber.lastEffect = null;
+
+  if (enableUpdaterTracking) {
+    if (isDevToolsPresent) {
+      // If we have pending work still, restore the original updaters
+      restorePendingUpdaters(root, rootRenderLanes);
+    }
+  }
 
   if (
     value !== null &&
     typeof value === 'object' &&
     typeof value.then === 'function'
   ) {
+    if (enableLazyContextPropagation) {
+      const currentSourceFiber = sourceFiber.alternate;
+      if (currentSourceFiber !== null) {
+        // Since we never visited the children of the suspended component, we
+        // need to propagate the context change now, to ensure that we visit
+        // them during the retry.
+        //
+        // We don't have to do this for errors because we retry errors without
+        // committing in between. So this is specific to Suspense.
+        propagateParentContextChangesToDeferredTree(
+          currentSourceFiber,
+          sourceFiber,
+          rootRenderLanes,
+        );
+      }
+    }
+
     // This is a wakeable.
     const wakeable: Wakeable = (value: any);
 
     if (__DEV__) {
       if (enableDebugTracing) {
         if (sourceFiber.mode & DebugTracingMode) {
-          const name = getComponentName(sourceFiber.type) || 'Unknown';
+          const name = getComponentNameFromFiber(sourceFiber) || 'Unknown';
           logComponentSuspended(name, wakeable);
         }
       }
     }
 
     if (enableSchedulingProfiler) {
-      markComponentSuspended(sourceFiber, wakeable);
+      markComponentRenderStopped();
+      markComponentSuspended(sourceFiber, wakeable, rootRenderLanes);
     }
 
-    if ((sourceFiber.mode & BlockingMode) === NoMode) {
-      // Reset the memoizedState to what it was before we attempted
-      // to render it.
+    // Reset the memoizedState to what it was before we attempted to render it.
+    // A legacy mode Suspense quirk, only relevant to hook components.
+    const tag = sourceFiber.tag;
+    if (
+      (sourceFiber.mode & ConcurrentMode) === NoMode &&
+      (tag === FunctionComponent ||
+        tag === ForwardRef ||
+        tag === SimpleMemoComponent)
+    ) {
       const currentSource = sourceFiber.alternate;
       if (currentSource) {
         sourceFiber.updateQueue = currentSource.updateQueue;
@@ -248,15 +297,23 @@ function throwException(
           wakeables.add(wakeable);
         }
 
-        // If the boundary is outside of blocking mode, we should *not*
+        // If the boundary is in legacy mode, we should *not*
         // suspend the commit. Pretend as if the suspended component rendered
         // null and keep rendering. In the commit phase, we'll schedule a
         // subsequent synchronous update to re-render the Suspense.
         //
         // Note: It doesn't matter whether the component that suspended was
-        // inside a blocking mode tree. If the Suspense is outside of it, we
+        // inside a concurrent mode tree. If the Suspense is outside of it, we
         // should *not* suspend the commit.
-        if ((workInProgress.mode & BlockingMode) === NoMode) {
+        //
+        // If the suspense boundary suspended itself suspended, we don't have to
+        // do this trick because nothing was partially started. We can just
+        // directly do a second pass over the fallback in this render and
+        // pretend we meant to render that directly.
+        if (
+          (workInProgress.mode & ConcurrentMode) === NoMode &&
+          workInProgress !== returnFiber
+        ) {
           workInProgress.flags |= DidCapture;
           sourceFiber.flags |= ForceUpdateForLegacySuspense;
 
@@ -264,6 +321,26 @@ function throwException(
           // But we shouldn't call any lifecycle methods or callbacks. Remove
           // all lifecycle effect tags.
           sourceFiber.flags &= ~(LifecycleEffectMask | Incomplete);
+
+          if (supportsPersistence && enablePersistentOffscreenHostContainer) {
+            // Another legacy Suspense quirk. In persistent mode, if this is the
+            // initial mount, override the props of the host container to hide
+            // its contents.
+            const currentSuspenseBoundary = workInProgress.alternate;
+            if (currentSuspenseBoundary === null) {
+              const offscreenFiber: Fiber = (workInProgress.child: any);
+              const offscreenContainer = offscreenFiber.child;
+              if (offscreenContainer !== null) {
+                const children = offscreenContainer.memoizedProps.children;
+                const containerProps = getOffscreenContainerProps(
+                  'hidden',
+                  children,
+                );
+                offscreenContainer.pendingProps = containerProps;
+                offscreenContainer.memoizedProps = containerProps;
+              }
+            }
+          }
 
           if (sourceFiber.tag === ClassComponent) {
             const currentSourceFiber = sourceFiber.alternate;
@@ -278,7 +355,7 @@ function throwException(
               // prevent a bail out.
               const update = createUpdate(NoTimestamp, SyncLane);
               update.tag = ForceUpdate;
-              enqueueUpdate(sourceFiber, update);
+              enqueueUpdate(sourceFiber, update, SyncLane);
             }
           }
 
@@ -335,6 +412,8 @@ function throwException(
         attachPingListener(root, wakeable, rootRenderLanes);
 
         workInProgress.flags |= ShouldCapture;
+        // TODO: I think we can remove this, since we now use `DidCapture` in
+        // the begin phase to prevent an early bailout.
         workInProgress.lanes = rootRenderLanes;
 
         return;
@@ -346,7 +425,7 @@ function throwException(
     // No boundary was found. Fallthrough to error mode.
     // TODO: Use invariant so the message is stripped in prod?
     value = new Error(
-      (getComponentName(sourceFiber.type) || 'A React component') +
+      (getComponentNameFromFiber(sourceFiber) || 'A React component') +
         ' suspended while rendering, but no fallback UI was specified.\n' +
         '\n' +
         'Add a <Suspense fallback=...> component higher in the tree to ' +

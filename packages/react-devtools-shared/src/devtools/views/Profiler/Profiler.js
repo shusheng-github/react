@@ -15,20 +15,19 @@ import TabBar from '../TabBar';
 import ClearProfilingDataButton from './ClearProfilingDataButton';
 import CommitFlamegraph from './CommitFlamegraph';
 import CommitRanked from './CommitRanked';
-import Interactions from './Interactions';
 import RootSelector from './RootSelector';
+import {SchedulingProfiler} from 'react-devtools-scheduling-profiler/src/SchedulingProfiler';
 import RecordToggle from './RecordToggle';
 import ReloadAndProfileButton from './ReloadAndProfileButton';
 import ProfilingImportExportButtons from './ProfilingImportExportButtons';
 import SnapshotSelector from './SnapshotSelector';
 import SidebarCommitInfo from './SidebarCommitInfo';
-import SidebarInteractions from './SidebarInteractions';
 import SidebarSelectedFiberInfo from './SidebarSelectedFiberInfo';
 import SettingsModal from 'react-devtools-shared/src/devtools/views/Settings/SettingsModal';
 import SettingsModalContextToggle from 'react-devtools-shared/src/devtools/views/Settings/SettingsModalContextToggle';
 import {SettingsModalContextController} from 'react-devtools-shared/src/devtools/views/Settings/SettingsModalContext';
 import portaledContent from '../portaledContent';
-import Store from '../../store';
+import {StoreContext} from '../context';
 
 import styles from './Profiler.css';
 
@@ -44,17 +43,23 @@ function Profiler(_: {||}) {
     supportsProfiling,
   } = useContext(ProfilerContext);
 
+  const {supportsSchedulingProfiler} = useContext(StoreContext);
+
+  let isLegacyProfilerSelected = false;
+
   let view = null;
-  if (didRecordCommits) {
+  if (didRecordCommits || selectedTabID === 'scheduling-profiler') {
     switch (selectedTabID) {
       case 'flame-chart':
+        isLegacyProfilerSelected = true;
         view = <CommitFlamegraph />;
         break;
       case 'ranked-chart':
+        isLegacyProfilerSelected = true;
         view = <CommitRanked />;
         break;
-      case 'interactions':
-        view = <Interactions />;
+      case 'scheduling-profiler':
+        view = <SchedulingProfiler />;
         break;
       default:
         break;
@@ -72,9 +77,6 @@ function Profiler(_: {||}) {
   let sidebar = null;
   if (!isProfiling && !isProcessingData && didRecordCommits) {
     switch (selectedTabID) {
-      case 'interactions':
-        sidebar = <SidebarInteractions />;
-        break;
       case 'flame-chart':
       case 'ranked-chart':
         // TRICKY
@@ -101,8 +103,16 @@ function Profiler(_: {||}) {
       <div className={styles.Profiler}>
         <div className={styles.LeftColumn}>
           <div className={styles.Toolbar}>
-            <RecordToggle disabled={!supportsProfiling} />
-            <ReloadAndProfileButton />
+            <RecordToggle
+              disabled={
+                !supportsProfiling || selectedTabID === 'scheduling-profiler'
+              }
+            />
+            <ReloadAndProfileButton
+              disabled={
+                selectedTabID === 'scheduling-profiler' || !supportsProfiling
+              }
+            />
             <ClearProfilingDataButton />
             <ProfilingImportExportButtons />
             <div className={styles.VRule} />
@@ -110,13 +120,15 @@ function Profiler(_: {||}) {
               currentTab={selectedTabID}
               id="Profiler"
               selectTab={selectTab}
-              tabs={tabs}
+              tabs={
+                supportsSchedulingProfiler ? tabsWithSchedulingProfiler : tabs
+              }
               type="profiler"
             />
             <RootSelector />
             <div className={styles.Spacer} />
             <SettingsModalContextToggle />
-            {didRecordCommits && (
+            {isLegacyProfilerSelected && didRecordCommits && (
               <Fragment>
                 <div className={styles.VRule} />
                 <SnapshotSelector />
@@ -128,7 +140,9 @@ function Profiler(_: {||}) {
             <ModalDialog />
           </div>
         </div>
-        <div className={styles.RightColumn}>{sidebar}</div>
+        {isLegacyProfilerSelected && (
+          <div className={styles.RightColumn}>{sidebar}</div>
+        )}
         <SettingsModal />
       </div>
     </SettingsModalContextController>
@@ -148,11 +162,16 @@ const tabs = [
     label: 'Ranked',
     title: 'Ranked chart',
   },
+];
+
+const tabsWithSchedulingProfiler = [
+  ...tabs,
+  null, // Divider/separator
   {
-    id: 'interactions',
-    icon: 'interactions',
-    label: 'Interactions',
-    title: 'Profiled interactions',
+    id: 'scheduling-profiler',
+    icon: 'scheduling-profiler',
+    label: 'Scheduling',
+    title: 'Scheduling Profiler',
   },
 ];
 
@@ -202,10 +221,4 @@ const RecordingInProgress = () => (
   </div>
 );
 
-function onErrorRetry(store: Store) {
-  // If an error happened in the Profiler,
-  // we should clear data on retry (or it will just happen again).
-  store.profilerStore.profilingData = null;
-}
-
-export default portaledContent(Profiler, onErrorRetry);
+export default portaledContent(Profiler);

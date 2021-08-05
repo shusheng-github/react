@@ -7,6 +7,7 @@
  * @flow
  */
 
+import type {ReactNodeList, OffscreenMode} from 'shared/ReactTypes';
 import type {ElementRef} from 'react';
 import type {
   HostComponent,
@@ -14,7 +15,7 @@ import type {
   MeasureLayoutOnSuccessCallback,
   MeasureOnSuccessCallback,
   NativeMethods,
-  ReactNativeBaseComponentViewConfig,
+  ViewConfig,
   TouchedViewDataAtPoint,
 } from './ReactNativeTypes';
 
@@ -24,6 +25,11 @@ import {create, diff} from './ReactNativeAttributePayload';
 import invariant from 'shared/invariant';
 
 import {dispatchEvent} from './ReactFabricEventEmitter';
+
+import {
+  DefaultEventPriority,
+  DiscreteEventPriority,
+} from 'react-reconciler/src/ReactEventPriorities';
 
 // Modules provided by RN:
 import {
@@ -46,6 +52,9 @@ const {
   measure: fabricMeasure,
   measureInWindow: fabricMeasureInWindow,
   measureLayout: fabricMeasureLayout,
+  unstable_DefaultEventPriority: FabricDefaultPriority,
+  unstable_DiscreteEventPriority: FabricDiscretePriority,
+  unstable_getCurrentEventPriority: fabricGetCurrentEventPriority,
 } = nativeFabricUIManager;
 
 const {get: getViewConfigForType} = ReactNativeViewConfigRegistry;
@@ -103,13 +112,13 @@ if (registerEventHandler) {
  */
 class ReactFabricHostComponent {
   _nativeTag: number;
-  viewConfig: ReactNativeBaseComponentViewConfig<>;
+  viewConfig: ViewConfig;
   currentProps: Props;
   _internalInstanceHandle: Object;
 
   constructor(
     tag: number,
-    viewConfig: ReactNativeBaseComponentViewConfig<>,
+    viewConfig: ViewConfig,
     props: Props,
     internalInstanceHandle: Object,
   ) {
@@ -128,17 +137,23 @@ class ReactFabricHostComponent {
   }
 
   measure(callback: MeasureOnSuccessCallback) {
-    fabricMeasure(
-      this._internalInstanceHandle.stateNode.node,
-      mountSafeCallback_NOT_REALLY_SAFE(this, callback),
-    );
+    const {stateNode} = this._internalInstanceHandle;
+    if (stateNode != null) {
+      fabricMeasure(
+        stateNode.node,
+        mountSafeCallback_NOT_REALLY_SAFE(this, callback),
+      );
+    }
   }
 
   measureInWindow(callback: MeasureInWindowOnSuccessCallback) {
-    fabricMeasureInWindow(
-      this._internalInstanceHandle.stateNode.node,
-      mountSafeCallback_NOT_REALLY_SAFE(this, callback),
-    );
+    const {stateNode} = this._internalInstanceHandle;
+    if (stateNode != null) {
+      fabricMeasureInWindow(
+        stateNode.node,
+        mountSafeCallback_NOT_REALLY_SAFE(this, callback),
+      );
+    }
   }
 
   measureLayout(
@@ -159,12 +174,18 @@ class ReactFabricHostComponent {
       return;
     }
 
-    fabricMeasureLayout(
-      this._internalInstanceHandle.stateNode.node,
-      relativeToNativeNode._internalInstanceHandle.stateNode.node,
-      mountSafeCallback_NOT_REALLY_SAFE(this, onFail),
-      mountSafeCallback_NOT_REALLY_SAFE(this, onSuccess),
-    );
+    const toStateNode = this._internalInstanceHandle.stateNode;
+    const fromStateNode =
+      relativeToNativeNode._internalInstanceHandle.stateNode;
+
+    if (toStateNode != null && fromStateNode != null) {
+      fabricMeasureLayout(
+        toStateNode.node,
+        fromStateNode.node,
+        mountSafeCallback_NOT_REALLY_SAFE(this, onFail),
+        mountSafeCallback_NOT_REALLY_SAFE(this, onSuccess),
+      );
+    }
   }
 
   setNativeProps(nativeProps: Object) {
@@ -179,12 +200,13 @@ class ReactFabricHostComponent {
 }
 
 // eslint-disable-next-line no-unused-expressions
-(ReactFabricHostComponent.prototype: NativeMethods);
+(ReactFabricHostComponent.prototype: $ReadOnly<{...NativeMethods, ...}>);
 
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoMutation';
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoHydration';
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoScopes';
 export * from 'react-reconciler/src/ReactFiberHostConfigWithNoTestSelectors';
+export * from 'react-reconciler/src/ReactFiberHostConfigWithNoMicrotasks';
 
 export function appendInitialChild(
   parentInstance: Instance,
@@ -292,6 +314,9 @@ export function getChildHostContext(
     type === 'RCTText' ||
     type === 'RCTVirtualText';
 
+  // TODO: If this is an offscreen host container, we should reuse the
+  // parent context.
+
   if (prevIsInAParentText !== isInAParentText) {
     return {isInAParentText};
   } else {
@@ -339,6 +364,24 @@ export function shouldSetTextContent(type: string, props: Props): boolean {
   return false;
 }
 
+export function getCurrentEventPriority(): * {
+  const currentEventPriority = fabricGetCurrentEventPriority
+    ? fabricGetCurrentEventPriority()
+    : null;
+
+  if (currentEventPriority != null) {
+    switch (currentEventPriority) {
+      case FabricDiscretePriority:
+        return DiscreteEventPriority;
+      case FabricDefaultPriority:
+      default:
+        return DefaultEventPriority;
+    }
+  }
+
+  return DefaultEventPriority;
+}
+
 // The Fabric renderer is secondary to the existing React Native renderer.
 export const isPrimaryRenderer = false;
 
@@ -384,6 +427,37 @@ export function cloneInstance(
     node: clone,
     canonical: instance.canonical,
   };
+}
+
+// TODO: These two methods should be replaced with `createOffscreenInstance` and
+// `cloneOffscreenInstance`. I did it this way for now because the offscreen
+// instance is stored on an extra HostComponent fiber instead of the
+// OffscreenComponent fiber, and I didn't want to add an extra check to the
+// generic HostComponent path. Instead we should use the OffscreenComponent
+// fiber, but currently Fabric expects a 1:1 correspondence between Fabric
+// instances and host fibers, so I'm leaving this optimization for later once
+// we can confirm this won't break any downstream expectations.
+export function getOffscreenContainerType(): string {
+  return 'RCTView';
+}
+
+export function getOffscreenContainerProps(
+  mode: OffscreenMode,
+  children: ReactNodeList,
+): Props {
+  if (mode === 'hidden') {
+    return {
+      children,
+      style: {display: 'none'},
+    };
+  } else {
+    return {
+      children,
+      style: {
+        flex: 1,
+      },
+    };
+  }
 }
 
 export function cloneHiddenInstance(
@@ -435,30 +509,6 @@ export function replaceContainerChildren(
   newChildren: ChildSet,
 ): void {}
 
-export function getFundamentalComponentInstance(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function mountFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function shouldUpdateFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function updateFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function unmountFundamentalComponent(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
-export function cloneFundamentalInstance(fundamentalInstance: any) {
-  throw new Error('Not yet implemented.');
-}
-
 export function getInstanceFromNode(node: any) {
   throw new Error('Not yet implemented.');
 }
@@ -490,5 +540,9 @@ export function afterActiveInstanceBlur() {
 }
 
 export function preparePortalMount(portalInstance: Instance): void {
+  // noop
+}
+
+export function detachDeletedInstance(node: Instance): void {
   // noop
 }

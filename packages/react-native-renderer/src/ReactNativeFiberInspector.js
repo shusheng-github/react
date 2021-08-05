@@ -14,12 +14,12 @@ import {
   findCurrentHostFiber,
   findCurrentFiberUsingSlowPath,
 } from 'react-reconciler/src/ReactFiberTreeReflection';
-import getComponentName from 'shared/getComponentName';
+import getComponentNameFromType from 'shared/getComponentNameFromType';
 import {HostComponent} from 'react-reconciler/src/ReactWorkTags';
 import invariant from 'shared/invariant';
 // Module provided by RN:
 import {UIManager} from 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface';
-
+import {enableGetInspectorDataForInstanceInProduction} from 'shared/ReactFeatureFlags';
 import {getClosestInstanceFromNode} from './ReactNativeComponentTree';
 
 const emptyObject = {};
@@ -27,61 +27,18 @@ if (__DEV__) {
   Object.freeze(emptyObject);
 }
 
-let getInspectorDataForViewTag;
-let getInspectorDataForViewAtPoint;
+let createHierarchy;
+let getHostNode;
+let getHostProps;
+let lastNonHostInstance;
+let getInspectorDataForInstance;
+let getOwnerHierarchy;
+let traverseOwnerTreeUp;
 
-if (__DEV__) {
-  const traverseOwnerTreeUp = function(hierarchy, instance: any) {
-    if (instance) {
-      hierarchy.unshift(instance);
-      traverseOwnerTreeUp(hierarchy, instance._debugOwner);
-    }
-  };
-
-  const getOwnerHierarchy = function(instance: any) {
-    const hierarchy = [];
-    traverseOwnerTreeUp(hierarchy, instance);
-    return hierarchy;
-  };
-
-  const lastNonHostInstance = function(hierarchy) {
-    for (let i = hierarchy.length - 1; i > 1; i--) {
-      const instance = hierarchy[i];
-
-      if (instance.tag !== HostComponent) {
-        return instance;
-      }
-    }
-    return hierarchy[0];
-  };
-
-  const getHostProps = function(fiber) {
-    const host = findCurrentHostFiber(fiber);
-    if (host) {
-      return host.memoizedProps || emptyObject;
-    }
-    return emptyObject;
-  };
-
-  const getHostNode = function(fiber: Fiber | null, findNodeHandle) {
-    let hostNode;
-    // look for children first for the hostNode
-    // as composite fibers do not have a hostNode
-    while (fiber) {
-      if (fiber.stateNode !== null && fiber.tag === HostComponent) {
-        hostNode = findNodeHandle(fiber.stateNode);
-      }
-      if (hostNode) {
-        return hostNode;
-      }
-      fiber = fiber.child;
-    }
-    return null;
-  };
-
-  const createHierarchy = function(fiberHierarchy) {
+if (__DEV__ || enableGetInspectorDataForInstanceInProduction) {
+  createHierarchy = function(fiberHierarchy) {
     return fiberHierarchy.map(fiber => ({
-      name: getComponentName(fiber.type),
+      name: getComponentNameFromType(fiber.type),
       getInspectorData: findNodeHandle => {
         return {
           props: getHostProps(fiber),
@@ -108,7 +65,33 @@ if (__DEV__) {
     }));
   };
 
-  const getInspectorDataForInstance = function(closestInstance): InspectorData {
+  getHostNode = function(fiber: Fiber | null, findNodeHandle) {
+    let hostNode;
+    // look for children first for the hostNode
+    // as composite fibers do not have a hostNode
+    while (fiber) {
+      if (fiber.stateNode !== null && fiber.tag === HostComponent) {
+        hostNode = findNodeHandle(fiber.stateNode);
+      }
+      if (hostNode) {
+        return hostNode;
+      }
+      fiber = fiber.child;
+    }
+    return null;
+  };
+
+  getHostProps = function(fiber) {
+    const host = findCurrentHostFiber(fiber);
+    if (host) {
+      return host.memoizedProps || emptyObject;
+    }
+    return emptyObject;
+  };
+
+  getInspectorDataForInstance = function(
+    closestInstance: Fiber | null,
+  ): InspectorData {
     // Handle case where user clicks outside of ReactNative
     if (!closestInstance) {
       return {
@@ -135,6 +118,35 @@ if (__DEV__) {
     };
   };
 
+  getOwnerHierarchy = function(instance: any) {
+    const hierarchy = [];
+    traverseOwnerTreeUp(hierarchy, instance);
+    return hierarchy;
+  };
+
+  lastNonHostInstance = function(hierarchy) {
+    for (let i = hierarchy.length - 1; i > 1; i--) {
+      const instance = hierarchy[i];
+
+      if (instance.tag !== HostComponent) {
+        return instance;
+      }
+    }
+    return hierarchy[0];
+  };
+
+  traverseOwnerTreeUp = function(hierarchy, instance: any) {
+    if (instance) {
+      hierarchy.unshift(instance);
+      traverseOwnerTreeUp(hierarchy, instance._debugOwner);
+    }
+  };
+}
+
+let getInspectorDataForViewTag;
+let getInspectorDataForViewAtPoint;
+
+if (__DEV__) {
   getInspectorDataForViewTag = function(viewTag: number): Object {
     const closestInstance = getClosestInstanceFromNode(viewTag);
 
@@ -190,13 +202,22 @@ if (__DEV__) {
 
           closestInstance =
             internalInstanceHandle.stateNode.canonical._internalInstanceHandle;
+
+          // Note: this is deprecated and we want to remove it ASAP. Keeping it here for React DevTools compatibility for now.
+          const nativeViewTag =
+            internalInstanceHandle.stateNode.canonical._nativeTag;
+
           nativeFabricUIManager.measure(
             internalInstanceHandle.stateNode.node,
             (x, y, width, height, pageX, pageY) => {
+              const inspectorData = getInspectorDataForInstance(
+                closestInstance,
+              );
               callback({
+                ...inspectorData,
                 pointerY: locationY,
                 frame: {left: pageX, top: pageY, width, height},
-                ...getInspectorDataForInstance(closestInstance),
+                touchedViewTag: nativeViewTag,
               });
             },
           );
@@ -249,4 +270,8 @@ if (__DEV__) {
   };
 }
 
-export {getInspectorDataForViewAtPoint, getInspectorDataForViewTag};
+export {
+  getInspectorDataForInstance,
+  getInspectorDataForViewAtPoint,
+  getInspectorDataForViewTag,
+};

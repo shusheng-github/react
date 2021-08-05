@@ -14,6 +14,7 @@ import type {
   BundlerConfig,
   ModuleMetaData,
   ModuleReference,
+  ModuleKey,
 } from './ReactFlightServerConfig';
 
 import {
@@ -23,34 +24,27 @@ import {
   completeWriting,
   flushBuffered,
   close,
+  closeWithError,
   processModelChunk,
+  processModuleChunk,
+  processSymbolChunk,
   processErrorChunk,
   resolveModuleMetaData,
+  getModuleKey,
+  isModuleReference,
 } from './ReactFlightServerConfig';
 
 import {
-  REACT_BLOCK_TYPE,
   REACT_ELEMENT_TYPE,
-  REACT_DEBUG_TRACING_MODE_TYPE,
   REACT_FORWARD_REF_TYPE,
   REACT_FRAGMENT_TYPE,
   REACT_LAZY_TYPE,
-  REACT_LEGACY_HIDDEN_TYPE,
   REACT_MEMO_TYPE,
-  REACT_OFFSCREEN_TYPE,
-  REACT_PROFILER_TYPE,
-  REACT_SCOPE_TYPE,
-  REACT_SERVER_BLOCK_TYPE,
-  REACT_STRICT_MODE_TYPE,
-  REACT_SUSPENSE_TYPE,
-  REACT_SUSPENSE_LIST_TYPE,
 } from 'shared/ReactSymbols';
 
-import * as React from 'react';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import invariant from 'shared/invariant';
-
-const isArray = Array.isArray;
+import isArray from 'shared/isArray';
 
 type ReactJSONValue =
   | string
@@ -73,53 +67,71 @@ type ReactModelObject = {+[key: string]: ReactModel};
 
 type Segment = {
   id: number,
-  query: () => ReactModel,
+  model: ReactModel,
   ping: () => void,
 };
 
 export type Request = {
   destination: Destination,
   bundlerConfig: BundlerConfig,
+  cache: Map<Function, mixed>,
   nextChunkId: number,
   pendingChunks: number,
   pingedSegments: Array<Segment>,
+  completedModuleChunks: Array<Chunk>,
   completedJSONChunks: Array<Chunk>,
   completedErrorChunks: Array<Chunk>,
+  writtenSymbols: Map<Symbol, number>,
+  writtenModules: Map<ModuleKey, number>,
+  onError: (error: mixed) => void,
   flowing: boolean,
   toJSON: (key: string, value: ReactModel) => ReactJSONValue,
 };
 
 const ReactCurrentDispatcher = ReactSharedInternals.ReactCurrentDispatcher;
 
+function defaultErrorHandler(error: mixed) {
+  console['error'](error); // Don't transform to our wrapper
+}
+
 export function createRequest(
   model: ReactModel,
   destination: Destination,
   bundlerConfig: BundlerConfig,
+  onError: void | ((error: mixed) => void),
 ): Request {
   const pingedSegments = [];
   const request = {
     destination,
     bundlerConfig,
+    cache: new Map(),
     nextChunkId: 0,
     pendingChunks: 0,
     pingedSegments: pingedSegments,
+    completedModuleChunks: [],
     completedJSONChunks: [],
     completedErrorChunks: [],
+    writtenSymbols: new Map(),
+    writtenModules: new Map(),
+    onError: onError === undefined ? defaultErrorHandler : onError,
     flowing: false,
     toJSON: function(key: string, value: ReactModel): ReactJSONValue {
       return resolveModelToJSON(request, this, key, value);
     },
   };
   request.pendingChunks++;
-  const rootSegment = createSegment(request, () => model);
+  const rootSegment = createSegment(request, model);
   pingedSegments.push(rootSegment);
   return request;
 }
 
-function attemptResolveElement(element: React$Element<any>): ReactModel {
-  const type = element.type;
-  const props = element.props;
-  if (element.ref !== null && element.ref !== undefined) {
+function attemptResolveElement(
+  type: any,
+  key: null | React$Key,
+  ref: mixed,
+  props: any,
+): ReactModel {
+  if (ref !== null && ref !== undefined) {
     // When the ref moves to the regular props object this will implicitly
     // throw for functions. We could probably relax it to a DEV warning for other
     // cases.
@@ -133,32 +145,30 @@ function attemptResolveElement(element: React$Element<any>): ReactModel {
     return type(props);
   } else if (typeof type === 'string') {
     // This is a host element. E.g. HTML.
-    return [REACT_ELEMENT_TYPE, type, element.key, element.props];
-  } else if (type[0] === REACT_SERVER_BLOCK_TYPE) {
-    return [REACT_ELEMENT_TYPE, type, element.key, element.props];
-  } else if (
-    type === REACT_FRAGMENT_TYPE ||
-    type === REACT_STRICT_MODE_TYPE ||
-    type === REACT_PROFILER_TYPE ||
-    type === REACT_SCOPE_TYPE ||
-    type === REACT_DEBUG_TRACING_MODE_TYPE ||
-    type === REACT_LEGACY_HIDDEN_TYPE ||
-    type === REACT_OFFSCREEN_TYPE ||
-    // TODO: These are temporary shims
-    // and we'll want a different behavior.
-    type === REACT_SUSPENSE_TYPE ||
-    type === REACT_SUSPENSE_LIST_TYPE
-  ) {
-    return element.props.children;
+    return [REACT_ELEMENT_TYPE, type, key, props];
+  } else if (typeof type === 'symbol') {
+    if (type === REACT_FRAGMENT_TYPE) {
+      // For key-less fragments, we add a small optimization to avoid serializing
+      // it as a wrapper.
+      // TODO: If a key is specified, we should propagate its key to any children.
+      // Same as if a server component has a key.
+      return props.children;
+    }
+    // This might be a built-in React component. We'll let the client decide.
+    // Any built-in works as long as its props are serializable.
+    return [REACT_ELEMENT_TYPE, type, key, props];
   } else if (type != null && typeof type === 'object') {
+    if (isModuleReference(type)) {
+      // This is a reference to a client component.
+      return [REACT_ELEMENT_TYPE, type, key, props];
+    }
     switch (type.$$typeof) {
       case REACT_FORWARD_REF_TYPE: {
         const render = type.render;
         return render(props, undefined);
       }
       case REACT_MEMO_TYPE: {
-        const nextChildren = React.createElement(type.type, element.props);
-        return attemptResolveElement(nextChildren);
+        return attemptResolveElement(type.type, key, ref, props);
       }
     }
   }
@@ -177,18 +187,22 @@ function pingSegment(request: Request, segment: Segment): void {
   }
 }
 
-function createSegment(request: Request, query: () => ReactModel): Segment {
+function createSegment(request: Request, model: ReactModel): Segment {
   const id = request.nextChunkId++;
   const segment = {
     id,
-    query,
+    model,
     ping: () => pingSegment(request, segment),
   };
   return segment;
 }
 
-function serializeIDRef(id: number): string {
+function serializeByValueID(id: number): string {
   return '$' + id.toString(16);
+}
+
+function serializeByRefID(id: number): string {
+  return '@' + id.toString(16);
 }
 
 function escapeStringValue(value: string): string {
@@ -374,71 +388,11 @@ export function resolveModelToJSON(
   switch (value) {
     case REACT_ELEMENT_TYPE:
       return '$';
-    case REACT_SERVER_BLOCK_TYPE:
-      return '@';
     case REACT_LAZY_TYPE:
-    case REACT_BLOCK_TYPE:
       invariant(
         false,
-        'React Blocks (and Lazy Components) are expected to be replaced by a ' +
-          'compiler on the server. Try configuring your compiler set up and avoid ' +
-          'using React.lazy inside of Blocks.',
+        'React Lazy Components are not yet supported on the server.',
       );
-  }
-
-  if (parent[0] === REACT_SERVER_BLOCK_TYPE) {
-    // We're currently encoding part of a Block. Look up which key.
-    switch (key) {
-      case '1': {
-        // Module reference
-        const moduleReference: ModuleReference<any> = (value: any);
-        try {
-          const moduleMetaData: ModuleMetaData = resolveModuleMetaData(
-            request.bundlerConfig,
-            moduleReference,
-          );
-          return (moduleMetaData: ReactJSONValue);
-        } catch (x) {
-          request.pendingChunks++;
-          const errorId = request.nextChunkId++;
-          emitErrorChunk(request, errorId, x);
-          return serializeIDRef(errorId);
-        }
-      }
-      case '2': {
-        // Load function
-        const load: () => ReactModel = (value: any);
-        try {
-          // Attempt to resolve the data.
-          return load();
-        } catch (x) {
-          if (
-            typeof x === 'object' &&
-            x !== null &&
-            typeof x.then === 'function'
-          ) {
-            // Something suspended, we'll need to create a new segment and resolve it later.
-            request.pendingChunks++;
-            const newSegment = createSegment(request, load);
-            const ping = newSegment.ping;
-            x.then(ping, ping);
-            return serializeIDRef(newSegment.id);
-          } else {
-            // This load failed, encode the error as a separate row and reference that.
-            request.pendingChunks++;
-            const errorId = request.nextChunkId++;
-            emitErrorChunk(request, errorId, x);
-            return serializeIDRef(errorId);
-          }
-        }
-      }
-      default: {
-        invariant(
-          false,
-          'A server block should never encode any other slots. This is a bug in React.',
-        );
-      }
-    }
   }
 
   // Resolve server components.
@@ -451,23 +405,80 @@ export function resolveModelToJSON(
     const element: React$Element<any> = (value: any);
     try {
       // Attempt to render the server component.
-      value = attemptResolveElement(element);
+      value = attemptResolveElement(
+        element.type,
+        element.key,
+        element.ref,
+        element.props,
+      );
     } catch (x) {
       if (typeof x === 'object' && x !== null && typeof x.then === 'function') {
         // Something suspended, we'll need to create a new segment and resolve it later.
         request.pendingChunks++;
-        const newSegment = createSegment(request, () => value);
+        const newSegment = createSegment(request, value);
         const ping = newSegment.ping;
         x.then(ping, ping);
-        return serializeIDRef(newSegment.id);
+        return serializeByRefID(newSegment.id);
       } else {
-        // Something errored. Don't bother encoding anything up to here.
-        throw x;
+        reportError(request, x);
+        // Something errored. We'll still send everything we have up until this point.
+        // We'll replace this element with a lazy reference that throws on the client
+        // once it gets rendered.
+        request.pendingChunks++;
+        const errorId = request.nextChunkId++;
+        emitErrorChunk(request, errorId, x);
+        return serializeByRefID(errorId);
       }
     }
   }
 
+  if (value === null) {
+    return null;
+  }
+
   if (typeof value === 'object') {
+    if (isModuleReference(value)) {
+      const moduleReference: ModuleReference<any> = (value: any);
+      const moduleKey: ModuleKey = getModuleKey(moduleReference);
+      const writtenModules = request.writtenModules;
+      const existingId = writtenModules.get(moduleKey);
+      if (existingId !== undefined) {
+        if (parent[0] === REACT_ELEMENT_TYPE && key === '1') {
+          // If we're encoding the "type" of an element, we can refer
+          // to that by a lazy reference instead of directly since React
+          // knows how to deal with lazy values. This lets us suspend
+          // on this component rather than its parent until the code has
+          // loaded.
+          return serializeByRefID(existingId);
+        }
+        return serializeByValueID(existingId);
+      }
+      try {
+        const moduleMetaData: ModuleMetaData = resolveModuleMetaData(
+          request.bundlerConfig,
+          moduleReference,
+        );
+        request.pendingChunks++;
+        const moduleId = request.nextChunkId++;
+        emitModuleChunk(request, moduleId, moduleMetaData);
+        writtenModules.set(moduleKey, moduleId);
+        if (parent[0] === REACT_ELEMENT_TYPE && key === '1') {
+          // If we're encoding the "type" of an element, we can refer
+          // to that by a lazy reference instead of directly since React
+          // knows how to deal with lazy values. This lets us suspend
+          // on this component rather than its parent until the code has
+          // loaded.
+          return serializeByRefID(moduleId);
+        }
+        return serializeByValueID(moduleId);
+      } catch (x) {
+        request.pendingChunks++;
+        const errorId = request.nextChunkId++;
+        emitErrorChunk(request, errorId, x);
+        return serializeByValueID(errorId);
+      }
+    }
+
     if (__DEV__) {
       if (value !== null && !isArray(value)) {
         // Verify that this is a simple plain object.
@@ -542,14 +553,26 @@ export function resolveModelToJSON(
   }
 
   if (typeof value === 'symbol') {
+    const writtenSymbols = request.writtenSymbols;
+    const existingId = writtenSymbols.get(value);
+    if (existingId !== undefined) {
+      return serializeByValueID(existingId);
+    }
+    const name = value.description;
     invariant(
-      false,
-      'Symbol values (%s) cannot be passed to client components. ' +
+      Symbol.for(name) === value,
+      'Only global symbols received from Symbol.for(...) can be passed to client components. ' +
+        'The symbol Symbol.for(%s) cannot be found among global symbols. ' +
         'Remove %s from this object, or avoid the entire object: %s',
       value.description,
       describeKeyForErrorMessage(key),
       describeObjectForErrorMessage(parent),
     );
+    request.pendingChunks++;
+    const symbolId = request.nextChunkId++;
+    emitSymbolChunk(request, symbolId, name);
+    writtenSymbols.set(value, symbolId);
+    return serializeByValueID(symbolId);
   }
 
   // $FlowFixMe: bigint isn't added to Flow yet.
@@ -574,6 +597,16 @@ export function resolveModelToJSON(
   );
 }
 
+function reportError(request: Request, error: mixed): void {
+  const onError = request.onError;
+  onError(error);
+}
+
+function fatalError(request: Request, error: mixed): void {
+  // This is called outside error handling code such as if an error happens in React internals.
+  closeWithError(request.destination, error);
+}
+
 function emitErrorChunk(request: Request, id: number, error: mixed): void {
   // TODO: We should not leak error messages to the client in prod.
   // Give this an error code instead and log on the server.
@@ -595,11 +628,23 @@ function emitErrorChunk(request: Request, id: number, error: mixed): void {
   request.completedErrorChunks.push(processedChunk);
 }
 
+function emitModuleChunk(
+  request: Request,
+  id: number,
+  moduleMetaData: ModuleMetaData,
+): void {
+  const processedChunk = processModuleChunk(request, id, moduleMetaData);
+  request.completedModuleChunks.push(processedChunk);
+}
+
+function emitSymbolChunk(request: Request, id: number, name: string): void {
+  const processedChunk = processSymbolChunk(request, id, name);
+  request.completedModuleChunks.push(processedChunk);
+}
+
 function retrySegment(request: Request, segment: Segment): void {
-  const query = segment.query;
-  let value;
   try {
-    value = query();
+    let value = segment.model;
     while (
       typeof value === 'object' &&
       value !== null &&
@@ -610,8 +655,13 @@ function retrySegment(request: Request, segment: Segment): void {
       // Attempt to render the server component.
       // Doing this here lets us reuse this same segment if the next component
       // also suspends.
-      segment.query = () => value;
-      value = attemptResolveElement(element);
+      segment.model = value;
+      value = attemptResolveElement(
+        element.type,
+        element.key,
+        element.ref,
+        element.props,
+      );
     }
     const processedChunk = processModelChunk(request, segment.id, value);
     request.completedJSONChunks.push(processedChunk);
@@ -622,6 +672,7 @@ function retrySegment(request: Request, segment: Segment): void {
       x.then(ping, ping);
       return;
     } else {
+      reportError(request, x);
       // This errored, we need to serialize this error to the
       emitErrorChunk(request, segment.id, x);
     }
@@ -630,19 +681,27 @@ function retrySegment(request: Request, segment: Segment): void {
 
 function performWork(request: Request): void {
   const prevDispatcher = ReactCurrentDispatcher.current;
+  const prevCache = currentCache;
   ReactCurrentDispatcher.current = Dispatcher;
+  currentCache = request.cache;
 
-  const pingedSegments = request.pingedSegments;
-  request.pingedSegments = [];
-  for (let i = 0; i < pingedSegments.length; i++) {
-    const segment = pingedSegments[i];
-    retrySegment(request, segment);
+  try {
+    const pingedSegments = request.pingedSegments;
+    request.pingedSegments = [];
+    for (let i = 0; i < pingedSegments.length; i++) {
+      const segment = pingedSegments[i];
+      retrySegment(request, segment);
+    }
+    if (request.flowing) {
+      flushCompletedChunks(request);
+    }
+  } catch (error) {
+    reportError(request, error);
+    fatalError(request, error);
+  } finally {
+    ReactCurrentDispatcher.current = prevDispatcher;
+    currentCache = prevCache;
   }
-  if (request.flowing) {
-    flushCompletedChunks(request);
-  }
-
-  ReactCurrentDispatcher.current = prevDispatcher;
 }
 
 let reentrant = false;
@@ -654,8 +713,23 @@ function flushCompletedChunks(request: Request): void {
   const destination = request.destination;
   beginWriting(destination);
   try {
-    const jsonChunks = request.completedJSONChunks;
+    // We emit module chunks first in the stream so that
+    // they can be preloaded as early as possible.
+    const moduleChunks = request.completedModuleChunks;
     let i = 0;
+    for (; i < moduleChunks.length; i++) {
+      request.pendingChunks--;
+      const chunk = moduleChunks[i];
+      if (!writeChunk(destination, chunk)) {
+        request.flowing = false;
+        i++;
+        break;
+      }
+    }
+    moduleChunks.splice(0, i);
+    // Next comes model data.
+    const jsonChunks = request.completedJSONChunks;
+    i = 0;
     for (; i < jsonChunks.length; i++) {
       request.pendingChunks--;
       const chunk = jsonChunks[i];
@@ -666,6 +740,9 @@ function flushCompletedChunks(request: Request): void {
       }
     }
     jsonChunks.splice(0, i);
+    // Finally, errors are sent. The idea is that it's ok to delay
+    // any error messages and prioritize display of other parts of
+    // the page.
     const errorChunks = request.completedErrorChunks;
     i = 0;
     for (; i < errorChunks.length; i++) {
@@ -696,12 +773,26 @@ export function startWork(request: Request): void {
 
 export function startFlowing(request: Request): void {
   request.flowing = true;
-  flushCompletedChunks(request);
+  try {
+    flushCompletedChunks(request);
+  } catch (error) {
+    reportError(request, error);
+    fatalError(request, error);
+  }
 }
 
 function unsupportedHook(): void {
   invariant(false, 'This Hook is not supported in Server Components.');
 }
+
+function unsupportedRefresh(): void {
+  invariant(
+    currentCache,
+    'Refreshing the cache is not supported in Server Components.',
+  );
+}
+
+let currentCache: Map<Function, mixed> | null = null;
 
 const Dispatcher: DispatcherType = {
   useMemo<T>(nextCreate: () => T): T {
@@ -711,11 +802,20 @@ const Dispatcher: DispatcherType = {
     return callback;
   },
   useDebugValue(): void {},
-  useDeferredValue<T>(value: T): T {
-    return value;
-  },
-  useTransition(): [(callback: () => void) => void, boolean] {
-    return [() => {}, false];
+  useDeferredValue: (unsupportedHook: any),
+  useTransition: (unsupportedHook: any),
+  getCacheForType<T>(resourceType: () => T): T {
+    invariant(
+      currentCache,
+      'Reading the cache is only supported while rendering.',
+    );
+    let entry: T | void = (currentCache.get(resourceType): any);
+    if (entry === undefined) {
+      entry = resourceType();
+      // TODO: Warn if undefined?
+      currentCache.set(resourceType, entry);
+    }
+    return entry;
   },
   readContext: (unsupportedHook: any),
   useContext: (unsupportedHook: any),
@@ -727,4 +827,7 @@ const Dispatcher: DispatcherType = {
   useEffect: (unsupportedHook: any),
   useOpaqueIdentifier: (unsupportedHook: any),
   useMutableSource: (unsupportedHook: any),
+  useCacheRefresh(): <T>(?() => T, ?T) => void {
+    return unsupportedRefresh;
+  },
 };

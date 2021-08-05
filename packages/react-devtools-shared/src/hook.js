@@ -182,6 +182,8 @@ export function installHook(target: any): DevToolsHook | null {
           window.__REACT_DEVTOOLS_APPEND_COMPONENT_STACK__ !== false;
         const breakOnConsoleErrors =
           window.__REACT_DEVTOOLS_BREAK_ON_CONSOLE_ERRORS__ === true;
+        const showInlineWarningsAndErrors =
+          window.__REACT_DEVTOOLS_SHOW_INLINE_WARNINGS_AND_ERRORS__ !== false;
 
         // The installHook() function is injected by being stringified in the browser,
         // so imports outside of this function do not get included.
@@ -190,11 +192,16 @@ export function installHook(target: any): DevToolsHook | null {
         // but Webpack wraps imports with an object (e.g. _backend_console__WEBPACK_IMPORTED_MODULE_0__)
         // and the object itself will be undefined as well for the reasons mentioned above,
         // so we use try/catch instead.
-        if (appendComponentStack || breakOnConsoleErrors) {
+        if (
+          appendComponentStack ||
+          breakOnConsoleErrors ||
+          showInlineWarningsAndErrors
+        ) {
           registerRendererWithConsole(renderer);
           patchConsole({
             appendComponentStack,
             breakOnConsoleErrors,
+            showInlineWarningsAndErrors,
           });
         }
       } catch (error) {}
@@ -280,6 +287,13 @@ export function installHook(target: any): DevToolsHook | null {
     }
   }
 
+  function onPostCommitFiberRoot(rendererID, root) {
+    const rendererInterface = rendererInterfaces.get(rendererID);
+    if (rendererInterface != null) {
+      rendererInterface.handlePostCommitFiberRoot(root);
+    }
+  }
+
   // TODO: More meaningful names for "rendererInterfaces" and "renderers".
   const fiberRoots = {};
   const rendererInterfaces = new Map();
@@ -308,6 +322,7 @@ export function installHook(target: any): DevToolsHook | null {
     checkDCE,
     onCommitFiberUnmount,
     onCommitFiberRoot,
+    onPostCommitFiberRoot,
   };
 
   Object.defineProperty(
@@ -315,7 +330,7 @@ export function installHook(target: any): DevToolsHook | null {
     '__REACT_DEVTOOLS_GLOBAL_HOOK__',
     ({
       // This property needs to be configurable for the test environment,
-      // else we won't be able to delete and recreate it beween tests.
+      // else we won't be able to delete and recreate it between tests.
       configurable: __DEV__,
       enumerable: false,
       get() {
