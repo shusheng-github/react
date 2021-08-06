@@ -1,3 +1,10 @@
+/*
+ * @Author: Shusheng
+ * @Date: 2021-08-06 10:12:44
+ * @LastEditTime: 2021-08-06 10:21:37
+ * @LastEditors: Shusheng
+ * @Description: 
+ */
 /**
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
@@ -12,11 +19,15 @@ import {enableCreateEventHandleAPI} from 'shared/ReactFeatureFlags';
 export type Flags = number;
 
 // Don't change these two values. They're used by React Dev Tools.
+// DOM需要插入到页面中
 export const NoFlags = /*                      */ 0b00000000000000000000000;
+// DOM需要更新
 export const PerformedWork = /*                */ 0b00000000000000000000001;
 
 // You can change the rest (and add more).
+// DOM需要插入到页面中并更新
 export const Placement = /*                    */ 0b00000000000000000000010;
+// DOM需要删除
 export const Update = /*                       */ 0b00000000000000000000100;
 export const PlacementAndUpdate = /*           */ Placement | Update;
 export const Deletion = /*                     */ 0b00000000000000000001000;

@@ -263,6 +263,8 @@ if (__DEV__) {
   didWarnAboutDefaultPropsOnFunctionComponent = {};
 }
 
+// mount的时候，会创建新的Fiber节点
+// update的时候，会将当前组件与该组件在上次更新对应的Fiber几点进行比较，(传说中的diff算法)，将比较的结果生成新的Fiber节点
 export function reconcileChildren(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -274,6 +276,9 @@ export function reconcileChildren(
     // won't update its child set by applying minimal side-effects. Instead,
     // we will add them all to the child before it gets rendered. That means
     // we can optimize this reconciliation pass by not tracking side-effects.
+    //如果这是一个尚未渲染的全新组件，我们不会通过应用最小的副作用来更新其子集。
+     //反而，我们将在渲染之前将它们全部添加到子组件中。 
+     //这意味着我们可以通过不跟踪副作用来优化此协调过程。
     workInProgress.child = mountChildFibers(
       workInProgress,
       null,
@@ -284,9 +289,11 @@ export function reconcileChildren(
     // If the current child is the same as the work in progress, it means that
     // we haven't yet started any work on these children. Therefore, we use
     // the clone algorithm to create a copy of all the current children.
+    // 如果当前子项与正在进行的工作相同，则表示我们还没有开始对这些子项进行任何工作。 因此，我们使用克隆算法来创建所有当前孩子的副本。
 
     // If we had any progressed work already, that is invalid at this point so
     // let's throw it out.
+    // 如果我们已经有任何进展的工作，那在这一点上是无效的，所以让我们把它扔掉。
     workInProgress.child = reconcileChildFibers(
       workInProgress,
       current.child,
@@ -3592,6 +3599,9 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
   return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
 }
 
+// current 当前组件展示页面对应的Fiber节点 在上一次更新时的Fiber节点，即workInpRrogress.alternate
+// workInProress  当前组件对应的Fiber节点
+// renderLane 优先级相关
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -3623,6 +3633,7 @@ function beginWork(
       oldProps !== newProps ||
       hasLegacyContextChanged() ||
       // Force a re-render if the implementation changed due to hot reload:
+      // 如果实现因热重载而改变，则强制重新渲染：
       (__DEV__ ? workInProgress.type !== current.type : false)
     ) {
       // If props or context changed, mark the fiber as having performed work.
@@ -3671,7 +3682,8 @@ function beginWork(
   // sometimes bails out later in the begin phase. This indicates that we should
   // move this assignment out of the common path and into each branch.
   workInProgress.lanes = NoLanes;
-
+  
+  // mount时，：根据tag的不同，创建不同的Fiber节点
   switch (workInProgress.tag) {
     case IndeterminateComponent: {
       return mountIndeterminateComponent(
