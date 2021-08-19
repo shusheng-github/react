@@ -3398,6 +3398,8 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
   // This fiber does not have any pending work. Bailout without entering
   // the begin phase. There's still some bookkeeping we that needs to be done
   // in this optimized path, mostly pushing stuff onto the stack.
+  //这种纤维不具有任何挂起的工作。紧急而不进入开始的阶段。有仍然有一些簿记我们该做的需要
+  //这个优化的路径，大多是东西推到堆栈中。
   switch (workInProgress.tag) {
     case HostRoot:
       pushHostRootContext(workInProgress);
@@ -3642,6 +3644,7 @@ function beginWork(
     } else {
       // Neither props nor legacy context changes. Check if there's a pending
       // update or context change.
+      // props 和 legacy 上下文都没有改变。 检查是否有待处理更新或上下文更改。
       const hasScheduledUpdateOrContext = checkScheduledUpdateOrContext(
         current,
         renderLanes,
@@ -3653,6 +3656,7 @@ function beginWork(
         (workInProgress.flags & DidCapture) === NoFlags
       ) {
         // No pending updates or context. Bail out now.
+        // 没有挂起的更新或上下文。现在跳出来。
         didReceiveUpdate = false;
         return attemptEarlyBailoutIfNoScheduledUpdate(
           current,

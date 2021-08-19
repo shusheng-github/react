@@ -204,10 +204,12 @@ function applyDerivedStateFromProps(
 const classComponentUpdater = {
   isMounted,
   enqueueSetState(inst, payload, callback) {
+    // inst是this上下文
     const fiber = getInstance(inst);
     const eventTime = requestEventTime();
     const lane = requestUpdateLane(fiber);
 
+    // 每一次调用`setState`，react 都会创建一个 update 保存
     const update = createUpdate(eventTime, lane);
     update.payload = payload;
     if (callback !== undefined && callback !== null) {
@@ -217,7 +219,9 @@ const classComponentUpdater = {
       update.callback = callback;
     }
 
+    // enqueueUpdate 把当前的update 传入当前fiber，待更新队列中 
     enqueueUpdate(fiber, update, lane);
+    // 开始调度更新
     const root = scheduleUpdateOnFiber(fiber, lane, eventTime);
     if (root !== null) {
       entangleTransitions(root, fiber, lane);
@@ -592,9 +596,9 @@ function adoptClassInstance(workInProgress: Fiber, instance: any): void {
 }
 
 function constructClassInstance(
-  workInProgress: Fiber,
-  ctor: any,
-  props: any,
+  workInProgress: Fiber, //当前正在工作的fiber对象
+  ctor: any, //我们的类组件
+  props: any, //props
 ): any {
   let isLegacyContextConsumer = false;
   let unmaskedContext = emptyContextObject;
@@ -654,9 +658,10 @@ function constructClassInstance(
       ? getMaskedContext(workInProgress, unmaskedContext)
       : emptyContextObject;
   }
-
+  // 实例化组件，得到组件实例instance
   let instance = new ctor(props, context);
   // Instantiate twice to help detect side-effects.
+  // 因为要检查副作用，所以要实例化两次
   if (__DEV__) {
     if (
       debugRenderPhaseSideEffectsForStrictMode &&

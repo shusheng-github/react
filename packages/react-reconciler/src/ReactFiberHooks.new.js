@@ -349,12 +349,12 @@ function areHookInputsEqual(
 }
 
 export function renderWithHooks<Props, SecondArg>(
-  current: Fiber | null,
-  workInProgress: Fiber,
-  Component: (p: Props, arg: SecondArg) => any,
-  props: Props,
-  secondArg: SecondArg,
-  nextRenderLanes: Lanes,
+  current: Fiber | null, //当前函数对应的fiber(初始化时候的fiber)
+  workInProgress: Fiber, //当前正在内存中工作的fiber
+  Component: (p: Props, arg: SecondArg) => any, //函数组件
+  props: Props, // 函数组件的第一个参数props
+  secondArg: SecondArg, //函数组件的其他参数
+  nextRenderLanes: Lanes, //下次渲染的优先级
 ): any {
   renderLanes = nextRenderLanes;
   currentlyRenderingFiber = workInProgress;
@@ -407,12 +407,15 @@ export function renderWithHooks<Props, SecondArg>(
         : HooksDispatcherOnUpdate;
   }
 
+  // 执行函数组件，得到return返回的React.Element对象
   let children = Component(props, secondArg);
 
   // Check if there was a render phase update
+  // 检查渲染阶段是否有更新
   if (didScheduleRenderPhaseUpdateDuringThisPass) {
     // Keep rendering in a loop for as long as render phase updates continue to
     // be scheduled. Use a counter to prevent infinite loops.
+    // 只要还在渲染阶段，就保持循环渲染，并且使用计数器防止无限循环
     let numberOfReRenders: number = 0;
     do {
       didScheduleRenderPhaseUpdateDuringThisPass = false;

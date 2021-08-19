@@ -82,12 +82,15 @@ function pushHostContext(fiber: Fiber): void {
   const nextContext = getChildHostContext(context, fiber.type, rootInstance);
 
   // Don't push this Fiber's context unless it's unique.
+  // 除非它是独一无二的，否则不要推动这个 Fiber 的上下文。
   if (context === nextContext) {
     return;
   }
 
   // Track the context and the Fiber that provided it.
   // This enables us to pop only Fibers that provide unique contexts.
+  // 跟踪上下文和提供它的 Fiber。
+  // 这使我们能够仅弹出提供独特上下文的Fiber。
   push(contextFiberStackCursor, fiber, fiber);
   push(contextStackCursor, nextContext, fiber);
 }
