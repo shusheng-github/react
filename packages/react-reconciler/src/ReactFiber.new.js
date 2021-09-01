@@ -118,7 +118,7 @@ function FiberNode(
   key: null | string,
   mode: TypeOfMode,
 ) {
-  // Instance
+  // Instance实例
   this.tag = tag;
   this.key = key;
   this.elementType = null;
@@ -133,6 +133,7 @@ function FiberNode(
 
   this.ref = null;
 
+  // 存放内存中fiber内容
   this.pendingProps = pendingProps;
   this.memoizedProps = null;
   this.updateQueue = null;
