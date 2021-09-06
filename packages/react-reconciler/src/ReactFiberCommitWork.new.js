@@ -652,6 +652,8 @@ function commitLayoutEffectOnFiber(
         const instance = finishedWork.stateNode;
         if (finishedWork.flags & Update) {
           if (!offscreenSubtreeWasHidden) {
+            // componentDidMount和componentDidUpdate执行时机是相同的，
+            // 初始化的时候执行componentDidMount，更新的时候执行componentDidUpdate
             if (current === null) {
               // We could update instance props and state here,
               // but instead we rely on them being set during last render.
@@ -688,6 +690,7 @@ function commitLayoutEffectOnFiber(
                 enableProfilerCommitHooks &&
                 finishedWork.mode & ProfileMode
               ) {
+                //componentDidMount第一次执行
                 try {
                   startLayoutEffectTimer();
                   instance.componentDidMount();

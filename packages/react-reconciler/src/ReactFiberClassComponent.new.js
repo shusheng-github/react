@@ -169,6 +169,7 @@ function applyDerivedStateFromProps(
   nextProps: any,
 ) {
   const prevState = workInProgress.memoizedState;
+  // 在这个地方执行getDerivedStateFromProps生命周期，得到将合并的state
   let partialState = getDerivedStateFromProps(nextProps, prevState);
   if (__DEV__) {
     if (
@@ -186,6 +187,7 @@ function applyDerivedStateFromProps(
     warnOnUndefinedDerivedState(ctor, partialState);
   }
   // Merge the partial state and the previous state.
+  // 合并state
   const memoizedState =
     partialState === null || partialState === undefined
       ? prevState
@@ -322,6 +324,7 @@ function checkShouldComponentUpdate(
 ) {
   const instance = workInProgress.stateNode;
   if (typeof instance.shouldComponentUpdate === 'function') {
+    // 执行shouldComponentUpdate生命周期
     let shouldUpdate = instance.shouldComponentUpdate(
       newProps,
       newState,
@@ -804,6 +807,7 @@ function callComponentWillReceiveProps(
   nextContext,
 ) {
   const oldState = instance.state;
+  // 执行生命周期componentWillReceiveProps
   if (typeof instance.componentWillReceiveProps === 'function') {
     instance.componentWillReceiveProps(newProps, nextContext);
   }
@@ -830,6 +834,7 @@ function callComponentWillReceiveProps(
 }
 
 // Invokes the mount life-cycles on a previously never rendered instance.
+// 在以前从未呈现的实例上调用初始化生命周期函数
 function mountClassInstance(
   workInProgress: Fiber,
   ctor: any,
@@ -889,6 +894,11 @@ function mountClassInstance(
   instance.state = workInProgress.memoizedState;
 
   const getDerivedStateFromProps = ctor.getDerivedStateFromProps;
+  // 在初始化阶段，getDerivedStateFromProps 是第二个执行的生命周期，
+  // 值得注意的是它是从 ctor 类上直接绑定的静态方法，传入 props ，state 。 
+  // 返回值将和之前的 state 合并，作为新的 state ，传递给组件实例使用。
+
+  // ctor就是我们写的类组件，获取类组件的静态方法
   if (typeof getDerivedStateFromProps === 'function') {
     applyDerivedStateFromProps(
       workInProgress,
@@ -896,21 +906,28 @@ function mountClassInstance(
       getDerivedStateFromProps,
       newProps,
     );
-    instance.state = workInProgress.memoizedState;
+    //将state复制给我们的实例上，instance.state就是我们组件中this.state获取的state
+    instance.state = workInProgress.memoizedState; 
   }
 
   // In order to support react-lifecycles-compat polyfilled components,
   // Unsafe lifecycles should not be invoked for components using the new APIs.
+  // 为了支持 react-lifecycles-compat polyfill 组件，不应为使用新 API 的组件调用不安全的生命周期。
+  // 所以如果存在 getDerivedStateFromProps 和 getSnapshotBeforeUpdate 就不会执行生命周期componentWillMount。
   if (
     typeof ctor.getDerivedStateFromProps !== 'function' &&
     typeof instance.getSnapshotBeforeUpdate !== 'function' &&
     (typeof instance.UNSAFE_componentWillMount === 'function' ||
       typeof instance.componentWillMount === 'function')
   ) {
+    // 当getDerivedStateFromProps和getSnapshotBeforeUpdate不存在的时候，执行componentWillMount
     callComponentWillMount(workInProgress, instance);
     // If we had additional state updates during this life-cycle, let's
     // process them now.
+    // 如果我们在这个生命周期中有额外的状态更新，在这个函数中处理它
+    // 优先级问题
     processUpdateQueue(workInProgress, newProps, instance, renderLanes);
+    //将state复制给我们的实例上，instance.state就是我们组件中this.state获取的state
     instance.state = workInProgress.memoizedState;
   }
 
@@ -1097,6 +1114,7 @@ function resumeMountClassInstance(
 }
 
 // Invokes the update life-cycles and returns false if it shouldn't rerender.
+// 调用更新生命周期，如果不应该重新渲染，则返回 false。
 function updateClassInstance(
   current: Fiber,
   workInProgress: Fiber,
@@ -1104,7 +1122,7 @@ function updateClassInstance(
   newProps: any,
   renderLanes: Lanes,
 ): boolean {
-  const instance = workInProgress.stateNode;
+  const instance = workInProgress.stateNode; //类组件实例
 
   cloneUpdateQueue(current, workInProgress);
 
@@ -1127,6 +1145,7 @@ function updateClassInstance(
   }
 
   const getDerivedStateFromProps = ctor.getDerivedStateFromProps;
+  // 判断是否具有getDerivedStateFromProps生命周期函数
   const hasNewLifecycles =
     typeof getDerivedStateFromProps === 'function' ||
     typeof instance.getSnapshotBeforeUpdate === 'function';
@@ -1159,6 +1178,7 @@ function updateClassInstance(
 
   const oldState = workInProgress.memoizedState;
   let newState = (instance.state = oldState);
+  // 优先级相关
   processUpdateQueue(workInProgress, newProps, instance, renderLanes);
   newState = workInProgress.memoizedState;
 
@@ -1207,7 +1227,7 @@ function updateClassInstance(
 
   const shouldUpdate =
     checkHasForceUpdateAfterProcessing() ||
-    checkShouldComponentUpdate(
+    checkShouldComponentUpdate( //执行生命周期shouldComponentUpdate，返回值决定是否执行render，调和子节点
       workInProgress,
       ctor,
       oldProps,
@@ -1234,6 +1254,7 @@ function updateClassInstance(
         typeof instance.componentWillUpdate === 'function')
     ) {
       if (typeof instance.componentWillUpdate === 'function') {
+        //  执行生命周期 componentWillUpdate
         instance.componentWillUpdate(newProps, newState, nextContext);
       }
       if (typeof instance.UNSAFE_componentWillUpdate === 'function') {

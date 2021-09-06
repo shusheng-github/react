@@ -1031,6 +1031,7 @@ function updateFunctionComponent(
   return workInProgress.child;
 }
 
+// 处理类组件的主要功能方法
 function updateClassComponent(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -1098,25 +1099,29 @@ function updateClassComponent(
   }
   prepareToReadContext(workInProgress, renderLanes);
 
-  const instance = workInProgress.stateNode;
-  let shouldUpdate;
-  if (instance === null) {
+  const instance = workInProgress.stateNode; //stateNode是fiber指向类组件实例的指针
+  let shouldUpdate; //该标识用来表示组价是否需要更新
+  if (instance === null) { //instance为组件实例，如果组件实例不存在，证明该类组件没有被挂载过，走初始化流程
     if (current !== null) {
       // A class component without an instance only mounts if it suspended
       // inside a non-concurrent tree, in an inconsistent state. We want to
       // treat it like a new mount, even though an empty version of it already
       // committed. Disconnect the alternate pointers.
+      // 没有实例的类组件只有在非并发数中是不一致的状态才会挂载，即使它已经提交了一个空版本，我们还想把它当成一个新的挂载。断开备用指针
       current.alternate = null;
       workInProgress.alternate = null;
       // Since this is conceptually a new fiber, schedule a Placement effect
+      // 由于这在概念上是一种新fiber，因此请安排赋值副作用
       workInProgress.flags |= Placement;
     }
     // In the initial pass we might need to construct the instance.
-    constructClassInstance(workInProgress, Component, nextProps);
-    mountClassInstance(workInProgress, Component, nextProps, renderLanes);
-    shouldUpdate = true;
+    // 在初始阶段，我们可能需要构建实例
+    constructClassInstance(workInProgress, Component, nextProps); //组件实例将在这个方法中被new
+    mountClassInstance(workInProgress, Component, nextProps, renderLanes); //初始化挂载组件流程
+    shouldUpdate = true;   
   } else if (current === null) {
     // In a resume, we'll already have an instance we can reuse.
+    //在恢复中，我们已经有了一个可以重用的实例。
     shouldUpdate = resumeMountClassInstance(
       workInProgress,
       Component,
@@ -1124,6 +1129,7 @@ function updateClassComponent(
       renderLanes,
     );
   } else {
+    // 更新组件流程
     shouldUpdate = updateClassInstance(
       current,
       workInProgress,
@@ -1217,6 +1223,7 @@ function finishClassComponent(
       }
       setIsRendering(false);
     } else {
+      // 执行render函数，得到子节点
       nextChildren = instance.render();
     }
     if (enableSchedulingProfiler) {
@@ -1238,6 +1245,7 @@ function finishClassComponent(
       renderLanes,
     );
   } else {
+    // 继续调和子节点
     reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   }
 
@@ -1359,6 +1367,7 @@ function updateHostComponent(
   pushHostContext(workInProgress);
 
   if (current === null) {
+    // 水合，和web端无关
     tryToClaimNextHydratableInstance(workInProgress);
   }
 
