@@ -118,7 +118,7 @@ function FiberNode(
   key: null | string,
   mode: TypeOfMode,
 ) {
-  // Instance
+  // Instance实例
   this.tag = tag;
   this.key = key;
   this.elementType = null;
@@ -133,6 +133,7 @@ function FiberNode(
 
   this.ref = null;
 
+  // 存放内存中fiber内容
   this.pendingProps = pendingProps;
   this.memoizedProps = null;
   this.updateQueue = null;
@@ -210,6 +211,7 @@ const createFiber = function(
   key: null | string,
   mode: TypeOfMode,
 ): Fiber {
+  // 这里的形状是精确的，但 Flow 不喜欢构造函数
   // $FlowFixMe: the shapes are exact here but Flow doesn't like constructors
   return new FiberNode(tag, pendingProps, key, mode);
 };
@@ -243,6 +245,7 @@ export function resolveLazyComponentTag(Component: Function): WorkTag {
 }
 
 // This is used to create an alternate fiber to do work on.
+// 这用于创建alternate fiber以进行工作。
 export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
   let workInProgress = current.alternate;
   if (workInProgress === null) {
@@ -251,6 +254,9 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
     // node that we're free to reuse. This is lazily created to avoid allocating
     // extra objects for things that are never updated. It also allow us to
     // reclaim the extra memory if needed.
+    // 我们使用双缓冲池技术，因为我们知道我们最多只需要树的两个版本。 
+    // 我们汇集了我们可以自由重用的“其他”未使用节点。 
+    // 这是惰性创建的，以避免为从未更新的事物分配额外的对象。 如果需要，它还允许我们回收额外的内存。
     workInProgress = createFiber(
       current.tag,
       pendingProps,
@@ -274,13 +280,16 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
   } else {
     workInProgress.pendingProps = pendingProps;
     // Needed because Blocks store data on type.
+    // 需要，因为块将数据存储在类型上。
     workInProgress.type = current.type;
 
     // We already have an alternate.
     // Reset the effect tag.
+    // 已经有了alternate， 重置effect的tag
     workInProgress.flags = NoFlags;
 
     // The effects are no longer valid.
+    // effects不再有效。
     workInProgress.subtreeFlags = NoFlags;
     workInProgress.deletions = null;
 
@@ -296,6 +305,8 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
 
   // Reset all effects except static ones.
   // Static effects are not specific to a render.
+  // 重置除静态effects之外的所有效果。
+  // 静态effects不是特定于渲染的。
   workInProgress.flags = current.flags & StaticMask;
   workInProgress.childLanes = current.childLanes;
   workInProgress.lanes = current.lanes;
@@ -307,6 +318,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
 
   // Clone the dependencies object. This is mutated during the render phase, so
   // it cannot be shared with the current fiber.
+  // 克隆依赖对象。 这在渲染阶段发生了变化，因此无法与当前fiber共享。
   const currentDependencies = current.dependencies;
   workInProgress.dependencies =
     currentDependencies === null
@@ -317,6 +329,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
         };
 
   // These will be overridden during the parent's reconciliation
+  // 这些将在父级对帐期间被覆盖
   workInProgress.sibling = current.sibling;
   workInProgress.index = current.index;
   workInProgress.ref = current.ref;
@@ -472,6 +485,7 @@ export function createFiberFromTypeAndProps(
 ): Fiber {
   let fiberTag = IndeterminateComponent;
   // The resolved type is set if we know what the final type will be. I.e. it's not lazy.
+  // 如果我们知道最终类型是什么，则设置解析类型。 IE。 这不是懒惰。
   let resolvedType = type;
   if (typeof type === 'function') {
     if (shouldConstruct(type)) {
@@ -499,6 +513,7 @@ export function createFiberFromTypeAndProps(
         mode |= StrictLegacyMode;
         if (enableStrictEffects && (mode & ConcurrentMode) !== NoMode) {
           // Strict effects should never run on legacy roots
+          // 严格的effects不应该在遗留roots上运行
           mode |= StrictEffectsMode;
         }
         break;
@@ -620,6 +635,7 @@ export function createFiberFromElement(
   const type = element.type;
   const key = element.key;
   const pendingProps = element.props;
+  // 创建fiber处理type和props
   const fiber = createFiberFromTypeAndProps(
     type,
     key,

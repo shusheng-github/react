@@ -209,6 +209,7 @@ if (supportsMutation) {
   ) {
     // We only have the top Fiber that was created but we need recurse down its
     // children to find all the terminal nodes.
+    // 我们只有创建的顶层 Fiber，但我们需要向下递归它的子节点以找到所有终端节点。
     let node = workInProgress.child;
     while (node !== null) {
       if (node.tag === HostComponent || node.tag === HostText) {
@@ -217,6 +218,7 @@ if (supportsMutation) {
         // If we have a portal child, then we don't want to traverse
         // down its children. Instead, we'll get insertions from each child in
         // the portal directly.
+        // 如果我们有一个portal孩子，那么我们不想向下遍历它的孩子。 相反，我们将直接从portal中的每个孩子那里获得插入。
       } else if (node.child !== null) {
         node.child.return = node;
         node = node.child;
@@ -497,6 +499,8 @@ if (supportsMutation) {
       childrenUnchanged,
       recyclableInstance,
     );
+    // finalizeInitialChildren 方法在 packages/react-dom/src/client/ReactDOMHostConfig.js
+    // 完成初始子项
     if (
       finalizeInitialChildren(
         newInstance,
@@ -637,6 +641,7 @@ function cutOffTailIfNeeded(
   }
 }
 
+// 冒泡特性（属性）
 function bubbleProperties(completedWork: Fiber) {
   const didBailout =
     completedWork.alternate !== null &&
@@ -647,9 +652,11 @@ function bubbleProperties(completedWork: Fiber) {
 
   if (!didBailout) {
     // Bubble up the earliest expiration time.
+    // 冒泡最早的到期时间。
     if (enableProfilerTimer && (completedWork.mode & ProfileMode) !== NoMode) {
       // In profiling mode, resetChildExpirationTime is also used to reset
       // profiler durations.
+      // 在分析模式下，resetChildExpirationTime 也用于重置分析器的持续时间。
       let actualDuration = completedWork.actualDuration;
       let treeBaseDuration = ((completedWork.selfBaseDuration: any): number);
 
@@ -670,6 +677,10 @@ function bubbleProperties(completedWork: Fiber) {
         // this value will reflect the amount of time spent working on a previous
         // render. In that case it should not bubble. We determine whether it was
         // cloned by comparing the child pointer.
+        // 当fiber被克隆时，它的 actualDuration 被重置为 0。这个值只会在fiber上完成工作时更新（即它不会退出）。
+        // 工作完成后，它应该冒泡到父级的实际持续时间。 如果fiber还没有被克隆（意味着没有完成任何工作），
+        // 那么这个值将反映在之前的渲染上工作所花费的时间。 在这种情况下，它不应该冒泡。 
+        // 我们通过比较子指针来确定它是否被克隆。
         actualDuration += child.actualDuration;
 
         treeBaseDuration += child.treeBaseDuration;
@@ -692,6 +703,8 @@ function bubbleProperties(completedWork: Fiber) {
         // Update the return pointer so the tree is consistent. This is a code
         // smell because it assumes the commit phase is never concurrent with
         // the render phase. Will address during refactor to alternate model.
+        // 更新返回指针，使树保持一致。 这是一种代码异味，因为它假定提交阶段永远不会与渲染阶段同时发生。
+        // 将在重构到替代模型期间解决。
         child.return = completedWork;
 
         child = child.sibling;
@@ -701,9 +714,11 @@ function bubbleProperties(completedWork: Fiber) {
     completedWork.subtreeFlags |= subtreeFlags;
   } else {
     // Bubble up the earliest expiration time.
+    // 冒泡最早的到期时间。
     if (enableProfilerTimer && (completedWork.mode & ProfileMode) !== NoMode) {
       // In profiling mode, resetChildExpirationTime is also used to reset
       // profiler durations.
+      // 在分析模式下，resetChildExpirationTime 还用于重置分析器持续时间。
       let treeBaseDuration = ((completedWork.selfBaseDuration: any): number);
 
       let child = completedWork.child;
@@ -717,6 +732,8 @@ function bubbleProperties(completedWork: Fiber) {
         // so we should bubble those up even during a bailout. All the other
         // flags have a lifetime only of a single render + commit, so we should
         // ignore them.
+        // “静态”标志共享它们所属的fiber/hook的生命周期，因此即使在救助期间我们也应该将它们冒泡。 
+        // 所有其他标志只有一次渲染 + 提交的生命周期，所以我们应该忽略它们。
         subtreeFlags |= child.subtreeFlags & StaticMask;
         subtreeFlags |= child.flags & StaticMask;
 
@@ -737,12 +754,16 @@ function bubbleProperties(completedWork: Fiber) {
         // so we should bubble those up even during a bailout. All the other
         // flags have a lifetime only of a single render + commit, so we should
         // ignore them.
+        // “静态”标志共享它们所属的fiber/hook的生命周期，因此即使在救助期间我们也应该将它们冒泡。 
+        // 所有其他标志只有一次渲染 + 提交的生命周期，所以我们应该忽略它们。
         subtreeFlags |= child.subtreeFlags & StaticMask;
         subtreeFlags |= child.flags & StaticMask;
 
         // Update the return pointer so the tree is consistent. This is a code
         // smell because it assumes the commit phase is never concurrent with
         // the render phase. Will address during refactor to alternate model.
+        // 更新返回指针，使树保持一致。 这是一种代码异味，因为它假定提交阶段永远不会与渲染阶段同时发生。
+        //  将在重构到替代模型期间解决。
         child.return = completedWork;
 
         child = child.sibling;
@@ -847,13 +868,18 @@ function completeWork(
     case HostRoot: {
       const fiberRoot = (workInProgress.stateNode: FiberRoot);
       if (enableCache) {
+        // 弹出root缓存池
         popRootCachePool(fiberRoot, renderLanes);
 
         const cache: Cache = workInProgress.memoizedState.cache;
+        // 弹出缓存提供者
         popCacheProvider(workInProgress, cache);
       }
+      // 弹出宿主容器
       popHostContainer(workInProgress);
+      // p弹出顶级遗留上下文对象
       popTopLevelLegacyContextObject(workInProgress);
+      // 重置可变源 WorkInProgress 版本
       resetMutableSourceWorkInProgressVersions();
       if (fiberRoot.pendingContext) {
         fiberRoot.context = fiberRoot.pendingContext;
@@ -883,7 +909,15 @@ function completeWork(
       popHostContext(workInProgress);
       const rootContainerInstance = getRootHostContainer();
       const type = workInProgress.type;
+      // update时我们还需要考虑workInProgress.stateNode != null ?（即该Fiber节点是否存在对应的DOM节点）
       if (current !== null && workInProgress.stateNode != null) {
+        // undete的情况
+        // 当update时，Fiber节点已经存在对应DOM节点，所以不需要生成DOM节点。需要做的主要是处理props，比如：
+
+        // onClick、onChange等回调函数的注册
+        // 处理style prop
+        // 处理DANGEROUSLY_SET_INNER_HTML prop
+        // 处理children prop
         updateHostComponent(
           current,
           workInProgress,
@@ -896,6 +930,10 @@ function completeWork(
           markRef(workInProgress);
         }
       } else {
+        // mount的情况
+          // 为Fiber节点生成对应的DOM节点
+          // 将子孙DOM节点插入刚生成的DOM节点中
+          // 与update逻辑中的updateHostComponent类似的处理props的过程
         if (!newProps) {
           invariant(
             workInProgress.stateNode !== null,
@@ -903,6 +941,7 @@ function completeWork(
               'caused by a bug in React. Please file an issue.',
           );
           // This can happen when we abort work.
+          // 当我们中止工作时可能会发生这种情况。
           bubbleProperties(workInProgress);
           return null;
         }
@@ -912,6 +951,8 @@ function completeWork(
         // "stack" as the parent. Then append children as we go in beginWork
         // or completeWork depending on whether we want to add them top->down or
         // bottom->up. Top->down is faster in IE11.
+        // 将 createInstance 移动到 beginWork 并将其作为父级保存在上下文“stack”中。 
+        // 然后在 beginWork 或 completeWork 中添加子项，具体取决于我们是要从顶部-> 向下,还是从底部-> 向上添加它们。 在 IE11 中自上而下更快。
         const wasHydrated = popHydrationState(workInProgress);
         if (wasHydrated) {
           // TODO: Move this and createInstance step into the beginPhase
@@ -928,6 +969,8 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
+          // 为fiber创建对应DOM节点
+          // packages/react-dom/src/client/ReactDOMHostConfig.js
           const instance = createInstance(
             type,
             newProps,
@@ -936,13 +979,17 @@ function completeWork(
             workInProgress,
           );
 
+          // 将子孙DOM节点插入刚生成的DOM节点中
           appendAllChildren(instance, workInProgress, false, false);
 
+          // DOM节点赋值给fiber.stateNode
           workInProgress.stateNode = instance;
 
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
+
+          // 与update逻辑中的updateHostComponent类似的处理props的过程
           if (
             finalizeInitialChildren(
               instance,
@@ -958,6 +1005,7 @@ function completeWork(
 
         if (workInProgress.ref !== null) {
           // If there is a ref on a host node we need to schedule a callback
+          // 如果host节点上有 ref 我们需要安排schedule调度
           markRef(workInProgress);
         }
       }
@@ -970,6 +1018,7 @@ function completeWork(
         const oldText = current.memoizedProps;
         // If we have an alternate, that means this is an update and we need
         // to schedule a side-effect to do the updates.
+        // 如果我们有一个alternate，这意味着这是一个更新，我们需要安排一个side-effect来进行更新。
         updateHostText(current, workInProgress, oldText, newText);
       } else {
         if (typeof newText !== 'string') {
@@ -979,6 +1028,7 @@ function completeWork(
               'caused by a bug in React. Please file an issue.',
           );
           // This can happen when we abort work.
+          // 当我们中止工作时可能会发生这种情况。
         }
         const rootContainerInstance = getRootHostContainer();
         const currentHostContext = getHostContext();
@@ -988,6 +1038,7 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
+          // 创建text实例
           workInProgress.stateNode = createTextInstance(
             newText,
             rootContainerInstance,

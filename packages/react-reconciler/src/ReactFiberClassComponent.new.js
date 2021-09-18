@@ -170,6 +170,8 @@ function applyDerivedStateFromProps(
 ) {
   const prevState = workInProgress.memoizedState;
   // 在这个地方执行getDerivedStateFromProps生命周期，得到将合并的state
+  // nextProps 父组件新传递的 props
+  // prevState 组件在此次更新前的 state
   let partialState = getDerivedStateFromProps(nextProps, prevState);
   if (__DEV__) {
     if (
@@ -1028,7 +1030,7 @@ function resumeMountClassInstance(
     }
     return false;
   }
-
+  
   if (typeof getDerivedStateFromProps === 'function') {
     applyDerivedStateFromProps(
       workInProgress,
@@ -1214,7 +1216,7 @@ function updateClassInstance(
     }
     return false;
   }
-
+  // 在这个地方执行getDerivedStateFromProps生命周期，得到将合并的state
   if (typeof getDerivedStateFromProps === 'function') {
     applyDerivedStateFromProps(
       workInProgress,

@@ -263,6 +263,8 @@ if (__DEV__) {
   didWarnAboutDefaultPropsOnFunctionComponent = {};
 }
 
+// mount的时候，会创建新的Fiber节点（创建子元素）
+// update的时候，会将当前组件与该组件在上次更新对应的Fiber几点进行比较，(传说中的diff算法)，将比较的结果生成新的Fiber节点
 export function reconcileChildren(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -274,6 +276,9 @@ export function reconcileChildren(
     // won't update its child set by applying minimal side-effects. Instead,
     // we will add them all to the child before it gets rendered. That means
     // we can optimize this reconciliation pass by not tracking side-effects.
+    //如果这是一个尚未渲染的全新组件，我们不会通过应用最小的副作用来更新其子集。
+     //反而，我们将在渲染之前将它们全部添加到子组件中。 
+     //这意味着我们可以通过不跟踪副作用来优化此协调过程。
     workInProgress.child = mountChildFibers(
       workInProgress,
       null,
@@ -284,9 +289,11 @@ export function reconcileChildren(
     // If the current child is the same as the work in progress, it means that
     // we haven't yet started any work on these children. Therefore, we use
     // the clone algorithm to create a copy of all the current children.
+    // 如果当前子项与正在进行的工作相同，则表示我们还没有开始对这些子项进行任何工作。 因此，我们使用克隆算法来创建所有当前孩子的副本。
 
     // If we had any progressed work already, that is invalid at this point so
     // let's throw it out.
+    // 如果我们已经有任何进展的工作，那在这一点上是无效的，所以让我们把它扔掉。
     workInProgress.child = reconcileChildFibers(
       workInProgress,
       current.child,
@@ -928,6 +935,7 @@ function markRef(current: Fiber | null, workInProgress: Fiber) {
     (current !== null && current.ref !== ref)
   ) {
     // Schedule a Ref effect
+    // 给Ref添加一个effect
     workInProgress.flags |= Ref;
     if (enableSuspenseLayoutEffectSemantics) {
       workInProgress.flags |= RefStatic;
@@ -1352,6 +1360,7 @@ function updateHostComponent(
   pushHostContext(workInProgress);
 
   if (current === null) {
+    // 水合，和web端无关
     tryToClaimNextHydratableInstance(workInProgress);
   }
 
@@ -1360,6 +1369,7 @@ function updateHostComponent(
   const prevProps = current !== null ? current.memoizedProps : null;
 
   let nextChildren = nextProps.children;
+  // 判断是否只有一个文本子节点
   const isDirectTextChild = shouldSetTextContent(type, nextProps);
 
   if (isDirectTextChild) {
@@ -1367,14 +1377,20 @@ function updateHostComponent(
     // case. We won't handle it as a reified child. We will instead handle
     // this in the host environment that also has access to this prop. That
     // avoids allocating another HostText fiber and traversing it.
+    // 我们特例是host节点的直接文本子节点。 这是一个很常见的情况。
+    // 我们不会把它当作一个具体化的child来处理。 
+    // 我们将改为在也可以访问此道具的host环境中处理此问题。 
+    // 这避免了分配另一个 HostText 光纤并遍历它。
     nextChildren = null;
   } else if (prevProps !== null && shouldSetTextContent(type, prevProps)) {
     // If we're switching from a direct text child to a normal child, or to
     // empty, we need to schedule the text content to be reset.
+    // 如果我们要从直接文本child切换到普通child，或者变为空子项，我们需要重置需要调度的文本内容。
     workInProgress.flags |= ContentReset;
   }
-
+  // 给Ref添加一个effect
   markRef(current, workInProgress);
+  // 调和子节点
   reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   return workInProgress.child;
 }
@@ -3368,12 +3384,14 @@ function checkScheduledUpdateOrContext(
 ): boolean {
   // Before performing an early bailout, we must check if there are pending
   // updates or context.
+  // 在执行早期bailout之前，我们必须检查是否有待处理的更新或上下文。
   const updateLanes = current.lanes;
   if (includesSomeLane(updateLanes, renderLanes)) {
     return true;
   }
   // No pending update, but because context is propagated lazily, we need
   // to check for a context change before we bail out.
+  // 没有挂起的更新，但是因为上下文是延迟传播的，所以我们需要在退出之前检查上下文更改。
   if (enableLazyContextPropagation) {
     const dependencies = current.dependencies;
     if (dependencies !== null && checkIfContextChanged(dependencies)) {
@@ -3391,6 +3409,8 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
   // This fiber does not have any pending work. Bailout without entering
   // the begin phase. There's still some bookkeeping we that needs to be done
   // in this optimized path, mostly pushing stuff onto the stack.
+  // 该fiber没有任何待处理的工作。 在不进入开始阶段的情况下进行Bailout。 
+  // 在这个优化的路径中，我们仍然需要做一些bookkeeping，主要是将东西推入stack。
   switch (workInProgress.tag) {
     case HostRoot:
       pushHostRootContext(workInProgress);
@@ -3627,10 +3647,12 @@ function beginWork(
     ) {
       // If props or context changed, mark the fiber as having performed work.
       // This may be unset if the props are determined to be equal later (memo).
+      // 如果props或context发生变化，请将fiber标记为已执行工作。 如果稍后确定props相等（备忘录），则可能会取消设置。
       didReceiveUpdate = true;
     } else {
       // Neither props nor legacy context changes. Check if there's a pending
       // update or context change.
+      // props和legacy context都不会改变。 检查是否有待处理的更新或上下文更改。
       const hasScheduledUpdateOrContext = checkScheduledUpdateOrContext(
         current,
         renderLanes,
@@ -3639,10 +3661,13 @@ function beginWork(
         !hasScheduledUpdateOrContext &&
         // If this is the second pass of an error or suspense boundary, there
         // may not be work scheduled on `current`, so we check for this flag.
+        // 如果这是错误或suspense边界的第二遍，则可能没有在“current”上安排工作，因此我们检查此标志。
         (workInProgress.flags & DidCapture) === NoFlags
       ) {
         // No pending updates or context. Bail out now.
+        // 没有待处理的更新或上下文。 现在保释。
         didReceiveUpdate = false;
+        // 如果没有预定更新,尝试提前Bailout
         return attemptEarlyBailoutIfNoScheduledUpdate(
           current,
           workInProgress,

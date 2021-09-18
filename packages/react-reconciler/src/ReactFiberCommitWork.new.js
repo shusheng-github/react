@@ -175,6 +175,7 @@ function reportUncaughtErrorInDEV(error) {
   }
 }
 
+// 销毁阶段
 const callComponentWillUnmountWithTimer = function(current, instance) {
   instance.props = current.memoizedProps;
   instance.state = current.memoizedState;
@@ -185,11 +186,13 @@ const callComponentWillUnmountWithTimer = function(current, instance) {
   ) {
     try {
       startLayoutEffectTimer();
+      // 执行销毁componentWillUnmount生命周期
       instance.componentWillUnmount();
     } finally {
       recordLayoutEffectDuration(current);
     }
   } else {
+    // 执行销毁componentWillUnmount生命周期
     instance.componentWillUnmount();
   }
 };
@@ -423,6 +426,7 @@ function commitBeforeMutationEffectsOnFiber(finishedWork: Fiber) {
               }
             }
           }
+          // 执行生命周期getSnapshotBeforeUpdate
           const snapshot = instance.getSnapshotBeforeUpdate(
             finishedWork.elementType === finishedWork.type
               ? prevProps
@@ -440,6 +444,7 @@ function commitBeforeMutationEffectsOnFiber(finishedWork: Fiber) {
               );
             }
           }
+          // 返回值作为__reactInternalSnapshotBeforeUpdate传递给componentDidUpdate生命周期
           instance.__reactInternalSnapshotBeforeUpdate = snapshot;
         }
         break;
@@ -1724,6 +1729,7 @@ function commitDeletion(
   detachFiberMutation(current);
 }
 
+// commit 阶段细分为 before Mutation( DOM 修改前)，Mutation ( DOM 修改)，Layout( DOM 修改后) 三个阶段，
 function commitWork(current: Fiber | null, finishedWork: Fiber): void {
   if (!supportsMutation) {
     switch (finishedWork.tag) {

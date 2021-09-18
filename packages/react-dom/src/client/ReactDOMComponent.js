@@ -325,6 +325,7 @@ function setInitialDOMProperties(
         }
       }
     } else if (nextProp != null) {
+      // 设置属性值
       setValueForProperty(domElement, propKey, nextProp, isCustomComponentTag);
     }
   }
@@ -362,6 +363,7 @@ export function createElement(
 
   // We create tags in the namespace of their parent container, except HTML
   // tags get no namespace.
+  // 我们在其父容器的命名空间中创建标签，除了没有命名空间的HTML 标签。
   const ownerDocument: Document = getOwnerDocumentFromRootContainer(
     rootContainerElement,
   );
@@ -468,6 +470,7 @@ export function createTextNode(
   );
 }
 
+// 设置初始子项
 export function setInitialProperties(
   domElement: Element,
   tag: string,
@@ -554,8 +557,10 @@ export function setInitialProperties(
       props = rawProps;
   }
 
+  // 检查props是否合法
   assertValidProps(tag, props);
 
+  // 设置初始 DOM 属性
   setInitialDOMProperties(
     tag,
     domElement,

@@ -17,6 +17,7 @@ if (__DEV__) {
 /**
  * Base class helpers for the updating state of a component.
  */
+// 执行constructor
 function Component(props, context, updater) {
   this.props = props; //绑定props
   this.context = context; //绑定context

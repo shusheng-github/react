@@ -273,6 +273,7 @@ function ChildReconciler(shouldTrackSideEffects) {
 
     // TODO: For the shouldClone case, this could be micro-optimized a bit by
     // assuming that after the first child we've already added everything.
+    // 对于 shouldClone 的情况，假设在第一个孩子之后我们已经添加了所有内容，可以对它进行微优化。
     let childToDelete = currentFirstChild;
     while (childToDelete !== null) {
       deleteChild(returnFiber, childToDelete);
@@ -305,6 +306,8 @@ function ChildReconciler(shouldTrackSideEffects) {
   function useFiber(fiber: Fiber, pendingProps: mixed): Fiber {
     // We currently set sibling to null and index to 0 here because it is easy
     // to forget to do before returning it. E.g. for the single child case.
+    // 我们目前在这里将sibling设置为 null 并将索引设置为 0，因为在返回之前很容易忘记这样做。 例如。 对于single child case。
+    // 创建workInProgress
     const clone = createWorkInProgress(fiber, pendingProps);
     clone.index = 0;
     clone.sibling = null;
@@ -326,14 +329,17 @@ function ChildReconciler(shouldTrackSideEffects) {
       const oldIndex = current.index;
       if (oldIndex < lastPlacedIndex) {
         // This is a move.
+        // 这是一个举动。
         newFiber.flags |= Placement;
         return lastPlacedIndex;
       } else {
         // This item can stay in place.
+        // 这个项目可以保持原位。
         return oldIndex;
       }
     } else {
       // This is an insertion.
+      // 这是一个插入。
       newFiber.flags |= Placement;
       return lastPlacedIndex;
     }
@@ -342,6 +348,7 @@ function ChildReconciler(shouldTrackSideEffects) {
   function placeSingleChild(newFiber: Fiber): Fiber {
     // This is simpler for the single child case. We only need to do a
     // placement for inserting new children.
+    // 对于单child情况，这更简单。 我们只需要为插入一个新children位置
     if (shouldTrackSideEffects && newFiber.alternate === null) {
       newFiber.flags |= Placement;
     }
@@ -356,11 +363,13 @@ function ChildReconciler(shouldTrackSideEffects) {
   ) {
     if (current === null || current.tag !== HostText) {
       // Insert
+      // 插入
       const created = createFiberFromText(textContent, returnFiber.mode, lanes);
       created.return = returnFiber;
       return created;
     } else {
       // Update
+      // 更新
       const existing = useFiber(current, textContent);
       existing.return = returnFiber;
       return existing;
@@ -545,6 +554,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     lanes: Lanes,
   ): Fiber | null {
     // Update the fiber if the keys match, otherwise return null.
+    // 如果键匹配，则更新fiber，否则返回 null。
 
     const key = oldFiber !== null ? oldFiber.key : null;
 
@@ -552,9 +562,11 @@ function ChildReconciler(shouldTrackSideEffects) {
       // Text nodes don't have keys. If the previous node is implicitly keyed
       // we can continue to replace it without aborting even if it is not a text
       // node.
+      // 文本节点没有键。 如果前一个节点是隐式键控的，即使它不是文本节点，我们也可以继续替换它而不会中止。
       if (key !== null) {
         return null;
       }
+      // 更新text node节点
       return updateTextNode(returnFiber, oldFiber, '' + newChild, lanes);
     }
 
@@ -728,6 +740,8 @@ function ChildReconciler(shouldTrackSideEffects) {
     // don't have backpointers on fibers. I'm trying to see how far we can get
     // with that model. If it ends up not being worth the tradeoffs, we can
     // add it later.
+    // 该算法无法通过从两端搜索来优化，因为我们在fibers上没有反向指针。 
+    // 我想看看我们能用那个模型走多远。 如果它最终不值得权衡，我们可以稍后添加它。
 
     // Even with a two ended optimization, we'd want to optimize for the case
     // where there are few changes and brute force the comparison instead of
@@ -736,15 +750,21 @@ function ChildReconciler(shouldTrackSideEffects) {
     // lots of look ahead. This doesn't handle reversal as well as two ended
     // search but that's unusual. Besides, for the two ended optimization to
     // work on Iterables, we'd need to copy the whole set.
+    // 即使进行了两端优化，我们也希望针对几乎没有变化的情况进行优化，并强制比较而不是针对 Map。
+    // 它想首先在只进模式下探索这条路径，只有在我们注意到我们需要大量向前看时才去map。 
+    // 这不能处理逆转以及两端搜索，但这是不寻常的。 此外，要使两端优化在 Iterables 上工作，我们需要复制整个集合。
 
     // In this first iteration, we'll just live with hitting the bad case
     // (adding everything to a Map) in for every insert/move.
+    // 在第一次迭代中，我们将忍受每次插入/移动时遇到的坏情况（将所有内容添加到 Map）。
 
     // If you change this code, also update reconcileChildrenIterator() which
     // uses the same algorithm.
+    // 如果您更改此代码，请同时更新 reconcileChildrenIterator() 使用相同的算法。
 
     if (__DEV__) {
       // First, validate keys.
+      // 首先，验证keys。
       let knownKeys = null;
       for (let i = 0; i < newChildren.length; i++) {
         const child = newChildren[i];
@@ -766,6 +786,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       } else {
         nextOldFiber = oldFiber.sibling;
       }
+      // 更新slot
       const newFiber = updateSlot(
         returnFiber,
         oldFiber,
@@ -792,6 +813,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
       if (previousNewFiber === null) {
         // TODO: Move out of the loop. This only happens for the first run.
+        // 跳出循环。 这仅在第一次运行时发生。
         resultingFirstChild = newFiber;
       } else {
         // TODO: Defer siblings if we're not at the right index for this slot.
@@ -806,18 +828,25 @@ function ChildReconciler(shouldTrackSideEffects) {
 
     if (newIdx === newChildren.length) {
       // We've reached the end of the new children. We can delete the rest.
+      // 我们已经到了新children的尽头。 我们可以删除其余的。
+      // deleteRemainingChildren 删除剩余的孩子
       deleteRemainingChildren(returnFiber, oldFiber);
       return resultingFirstChild;
     }
 
+    // 新元素挂载的处理
     if (oldFiber === null) {
       // If we don't have any more existing children we can choose a fast path
       // since the rest will all be insertions.
+      // 如果我们没有更多现有的孩子，我们可以选择一条快速路径因为其余的都是插入。
+      // 只生成并且返回第一个子元素，其余的子元素通过兄弟元素sibling插入
       for (; newIdx < newChildren.length; newIdx++) {
+        // 创建新的fiber节点
         const newFiber = createChild(returnFiber, newChildren[newIdx], lanes);
         if (newFiber === null) {
           continue;
         }
+        // 更新flags的值
         lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
         if (previousNewFiber === null) {
           // TODO: Move out of the loop. This only happens for the first run.
@@ -831,6 +860,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
 
     // Add all children to a key map for quick lookups.
+    // 将所有子项添加到键映射以进行快速查找。
     const existingChildren = mapRemainingChildren(returnFiber, oldFiber);
 
     // Keep scanning and use the map to restore deleted items as moves.
@@ -971,6 +1001,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         if (oldFiber && newFiber.alternate === null) {
           // We matched the slot, but we didn't reuse the existing fiber, so we
           // need to delete the existing child.
+          // 我们匹配了槽，但是我们没有重用现有的fiber，所以我们需要删除现有的孩子。
           deleteChild(returnFiber, oldFiber);
         }
       }
@@ -1092,7 +1123,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     let child = currentFirstChild;
     while (child !== null) {
       // TODO: If key === null and child.key === null, then this only applies to
-      // the first item in the list.
+      // the first item in the list.（那么这只适用于列表中的第一项。）
       if (child.key === key) {
         const elementType = element.type;
         if (elementType === REACT_FRAGMENT_TYPE) {
@@ -1135,6 +1166,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           }
         }
         // Didn't match.
+        // 不匹配删除child
         deleteRemainingChildren(returnFiber, child);
         break;
       } else {
@@ -1153,6 +1185,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       created.return = returnFiber;
       return created;
     } else {
+      // 创建element的fiber
       const created = createFiberFromElement(element, returnFiber.mode, lanes);
       created.ref = coerceRef(returnFiber, currentFirstChild, element);
       created.return = returnFiber;
@@ -1199,6 +1232,7 @@ function ChildReconciler(shouldTrackSideEffects) {
   // This API will tag the children with the side-effect of the reconciliation
   // itself. They will be added to the side-effect list as we pass through the
   // children and the parent.
+  // 此 API 将使用tag本身的副作用标记子项。 当我们通过孩子和父母时，它们将被添加到副作用列表中。
   function reconcileChildFibers(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,
@@ -1213,6 +1247,8 @@ function ChildReconciler(shouldTrackSideEffects) {
     // Handle top level unkeyed fragments as if they were arrays.
     // This leads to an ambiguity between <>{[...]}</> and <>...</>.
     // We treat the ambiguous cases above the same.
+     // 这个函数不是递归的。
+    // 如果顶级项目是一个数组，我们将其视为一组子项，而不是一个片段。 另一方面，嵌套数组将被视为片段节点。 递归发生在正常流程中。
     const isUnkeyedTopLevelFragment =
       typeof newChild === 'object' &&
       newChild !== null &&
@@ -1222,7 +1258,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       newChild = newChild.props.children;
     }
 
-    // Handle object types
+    // Handle object types（处理对象类型）
     if (typeof newChild === 'object' && newChild !== null) {
       switch (newChild.$$typeof) {
         case REACT_ELEMENT_TYPE:
@@ -1257,6 +1293,7 @@ function ChildReconciler(shouldTrackSideEffects) {
           }
       }
 
+      // 如果子元素是数组多项，则走reconcileChildrenArray
       if (isArray(newChild)) {
         return reconcileChildrenArray(
           returnFiber,
@@ -1278,6 +1315,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       throwOnInvalidObjectType(returnFiber, newChild);
     }
 
+    // 处理string类型
     if (typeof newChild === 'string' || typeof newChild === 'number') {
       return placeSingleChild(
         reconcileSingleTextNode(
@@ -1296,6 +1334,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
 
     // Remaining cases are all treated as empty.
+    // 剩余的案例都被视为空的。
     return deleteRemainingChildren(returnFiber, currentFirstChild);
   }
 

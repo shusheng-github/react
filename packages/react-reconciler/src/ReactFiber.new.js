@@ -211,6 +211,7 @@ const createFiber = function(
   key: null | string,
   mode: TypeOfMode,
 ): Fiber {
+  // 这里的形状是精确的，但 Flow 不喜欢构造函数
   // $FlowFixMe: the shapes are exact here but Flow doesn't like constructors
   return new FiberNode(tag, pendingProps, key, mode);
 };
@@ -577,7 +578,7 @@ export function createFiberFromTypeAndProps(
       }
     }
   }
-
+  // 创建fiebr
   const fiber = createFiber(fiberTag, pendingProps, key, mode);
   fiber.elementType = type;
   fiber.type = resolvedType;
@@ -621,6 +622,7 @@ export function createFiberFromElement(
   const type = element.type;
   const key = element.key;
   const pendingProps = element.props;
+  // 创建fiber处理type和props
   const fiber = createFiberFromTypeAndProps(
     type,
     key,

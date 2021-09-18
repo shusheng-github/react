@@ -286,13 +286,16 @@ export function createInstance(
   } else {
     parentNamespace = ((hostContext: any): HostContextProd);
   }
+  // 创建dom元素
   const domElement: Instance = createElement(
     type,
     props,
     rootContainerInstance,
     parentNamespace,
   );
+  // 预缓存fiber node
   precacheFiberNode(internalInstanceHandle, domElement);
+  // 更新fiber的props
   updateFiberProps(domElement, props);
   return domElement;
 }
@@ -304,6 +307,7 @@ export function appendInitialChild(
   parentInstance.appendChild(child);
 }
 
+// 完成初始子项
 export function finalizeInitialChildren(
   domElement: Instance,
   type: string,
@@ -311,6 +315,7 @@ export function finalizeInitialChildren(
   rootContainerInstance: Container,
   hostContext: HostContext,
 ): boolean {
+  // 设置初始属性
   setInitialProperties(domElement, type, props, rootContainerInstance);
   return shouldAutoFocusHostComponent(type, props);
 }
@@ -370,6 +375,7 @@ export function createTextInstance(
     validateDOMNesting(null, text, hostContextDev.ancestorInfo);
   }
   const textNode: TextInstance = createTextNode(text, rootContainerInstance);
+  // 预缓存 FiberNode
   precacheFiberNode(internalInstanceHandle, textNode);
   return textNode;
 }

@@ -194,6 +194,7 @@ export function setValueForProperty(
         attributeValue = '' + (value: any);
       }
       if (propertyInfo.sanitizeURL) {
+        // 清理 URL
         sanitizeURL(attributeValue.toString());
       }
     }

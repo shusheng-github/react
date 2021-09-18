@@ -263,7 +263,7 @@ if (__DEV__) {
   didWarnAboutDefaultPropsOnFunctionComponent = {};
 }
 
-// mount的时候，会创建新的Fiber节点
+// mount的时候，会创建新的Fiber节点（创建子元素）
 // update的时候，会将当前组件与该组件在上次更新对应的Fiber几点进行比较，(传说中的diff算法)，将比较的结果生成新的Fiber节点
 export function reconcileChildren(
   current: Fiber | null,
@@ -928,6 +928,7 @@ function updateProfiler(
   return workInProgress.child;
 }
 
+// 
 function markRef(current: Fiber | null, workInProgress: Fiber) {
   const ref = workInProgress.ref;
   if (
@@ -935,6 +936,7 @@ function markRef(current: Fiber | null, workInProgress: Fiber) {
     (current !== null && current.ref !== ref)
   ) {
     // Schedule a Ref effect
+    // 给Ref添加一个effect
     workInProgress.flags |= Ref;
     if (enableSuspenseLayoutEffectSemantics) {
       workInProgress.flags |= RefStatic;
@@ -1130,6 +1132,7 @@ function updateClassComponent(
     );
   } else {
     // 更新组件流程
+    // 调用更新生命周期，如果不应该重新渲染，则返回 false。
     shouldUpdate = updateClassInstance(
       current,
       workInProgress,
@@ -1391,6 +1394,7 @@ function updateHostComponent(
   }
 
   markRef(current, workInProgress);
+  // 调和子节点
   reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   return workInProgress.child;
 }

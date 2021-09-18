@@ -200,6 +200,7 @@ let updateHostComponent;
 let updateHostText;
 if (supportsMutation) {
   // Mutation mode
+  // 变种模式
 
   appendAllChildren = function(
     parent: Instance,
@@ -209,6 +210,7 @@ if (supportsMutation) {
   ) {
     // We only have the top Fiber that was created but we need recurse down its
     // children to find all the terminal nodes.
+    // 我们只有创建的顶层 Fiber，但我们需要向下递归它的子节点以找到所有终端节点。
     let node = workInProgress.child;
     while (node !== null) {
       if (node.tag === HostComponent || node.tag === HostText) {
@@ -217,6 +219,7 @@ if (supportsMutation) {
         // If we have a portal child, then we don't want to traverse
         // down its children. Instead, we'll get insertions from each child in
         // the portal directly.
+        // 如果我们有一个portal孩子，那么我们不想向下遍历它的孩子。 相反，我们将直接从portal中的每个孩子那里获得插入。
       } else if (node.child !== null) {
         node.child.return = node;
         node = node.child;
@@ -239,6 +242,7 @@ if (supportsMutation) {
   updateHostContainer = function(current: null | Fiber, workInProgress: Fiber) {
     // Noop
   };
+  // 在updateHostComponent内部，被处理完的props会被赋值给workInProgress.updateQueue，并最终会在commit阶段被渲染在页面上。
   updateHostComponent = function(
     current: Fiber,
     workInProgress: Fiber,
@@ -883,7 +887,15 @@ function completeWork(
       popHostContext(workInProgress);
       const rootContainerInstance = getRootHostContainer();
       const type = workInProgress.type;
+      // update时我们还需要考虑workInProgress.stateNode != null ?（即该Fiber节点是否存在对应的DOM节点）
       if (current !== null && workInProgress.stateNode != null) {
+        // undete的情况
+        // 当update时，Fiber节点已经存在对应DOM节点，所以不需要生成DOM节点。需要做的主要是处理props，比如：
+
+        // onClick、onChange等回调函数的注册
+        // 处理style prop
+        // 处理DANGEROUSLY_SET_INNER_HTML prop
+        // 处理children prop
         updateHostComponent(
           current,
           workInProgress,
@@ -896,6 +908,10 @@ function completeWork(
           markRef(workInProgress);
         }
       } else {
+        // mount的情况
+          // 为Fiber节点生成对应的DOM节点
+          // 将子孙DOM节点插入刚生成的DOM节点中
+          // 与update逻辑中的updateHostComponent类似的处理props的过程
         if (!newProps) {
           invariant(
             workInProgress.stateNode !== null,
@@ -903,6 +919,7 @@ function completeWork(
               'caused by a bug in React. Please file an issue.',
           );
           // This can happen when we abort work.
+          // 当我们中止工作时可能会发生这种情况。
           bubbleProperties(workInProgress);
           return null;
         }
@@ -912,6 +929,8 @@ function completeWork(
         // "stack" as the parent. Then append children as we go in beginWork
         // or completeWork depending on whether we want to add them top->down or
         // bottom->up. Top->down is faster in IE11.
+        // 将 createInstance 移动到 beginWork 并将其作为父级保存在上下文“stack”中。 
+        // 然后在 beginWork 或 completeWork 中添加子项，具体取决于我们是要从顶部-> 向下,还是从底部-> 向上添加它们。 在 IE11 中自上而下更快。
         const wasHydrated = popHydrationState(workInProgress);
         if (wasHydrated) {
           // TODO: Move this and createInstance step into the beginPhase
@@ -928,6 +947,8 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
+          // 为fiber创建对应DOM节点
+          // packages/react-dom/src/client/ReactDOMHostConfig.js
           const instance = createInstance(
             type,
             newProps,
@@ -936,13 +957,17 @@ function completeWork(
             workInProgress,
           );
 
+          // 将子孙DOM节点插入刚生成的DOM节点中
           appendAllChildren(instance, workInProgress, false, false);
 
+          // DOM节点赋值给fiber.stateNode
           workInProgress.stateNode = instance;
 
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
+
+          // 与update逻辑中的updateHostComponent类似的处理props的过程
           if (
             finalizeInitialChildren(
               instance,

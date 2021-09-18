@@ -342,6 +342,7 @@ function ChildReconciler(shouldTrackSideEffects) {
   function placeSingleChild(newFiber: Fiber): Fiber {
     // This is simpler for the single child case. We only need to do a
     // placement for inserting new children.
+    // 这对于单子情况更简单。 我们只需要做一个用于插入新孩子的placement（位置）。
     if (shouldTrackSideEffects && newFiber.alternate === null) {
       newFiber.flags |= Placement;
     }
@@ -411,7 +412,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         return existing;
       }
     }
-    // Insert
+    // Insert  插入子元素
     const created = createFiberFromElement(element, returnFiber.mode, lanes);
     created.ref = coerceRef(returnFiber, current, element);
     created.return = returnFiber;
@@ -1092,7 +1093,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     let child = currentFirstChild;
     while (child !== null) {
       // TODO: If key === null and child.key === null, then this only applies to
-      // the first item in the list.
+      // the first item in the list.（那么这只适用于列表中的第一项。）
       if (child.key === key) {
         const elementType = element.type;
         if (elementType === REACT_FRAGMENT_TYPE) {
@@ -1153,6 +1154,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       created.return = returnFiber;
       return created;
     } else {
+      // 创建element的fiber
       const created = createFiberFromElement(element, returnFiber.mode, lanes);
       created.ref = coerceRef(returnFiber, currentFirstChild, element);
       created.return = returnFiber;
@@ -1199,6 +1201,7 @@ function ChildReconciler(shouldTrackSideEffects) {
   // This API will tag the children with the side-effect of the reconciliation
   // itself. They will be added to the side-effect list as we pass through the
   // children and the parent.
+  // 此 API 将使用tag本身的副作用标记子项。 当我们通过孩子和父母时，它们将被添加到副作用列表中。
   function reconcileChildFibers(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,
@@ -1210,9 +1213,13 @@ function ChildReconciler(shouldTrackSideEffects) {
     // not as a fragment. Nested arrays on the other hand will be treated as
     // fragment nodes. Recursion happens at the normal flow.
 
-    // Handle top level unkeyed fragments as if they were arrays.
-    // This leads to an ambiguity between <>{[...]}</> and <>...</>.
-    // We treat the ambiguous cases above the same.
+    // Handle top level unkeyed fragments as if they were arrays.（处理顶级无键片段，就像它们是数组一样。）
+    // This leads to an ambiguity between（这导致了两者之间的歧义） <>{[...]}</> and <>...</>.
+    // We treat the ambiguous cases above the same.  我们同样对待上面的模棱两可的情况。
+    // 这个函数不是递归的。
+    // 如果顶级项目是一个数组，我们将其视为一组子项，而不是一个片段。 另一方面，嵌套数组将被视为片段节点。 递归发生在正常流程中。
+
+
     const isUnkeyedTopLevelFragment =
       typeof newChild === 'object' &&
       newChild !== null &&
@@ -1222,7 +1229,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       newChild = newChild.props.children;
     }
 
-    // Handle object types
+    // Handle object types（处理对象类型）
     if (typeof newChild === 'object' && newChild !== null) {
       switch (newChild.$$typeof) {
         case REACT_ELEMENT_TYPE:
@@ -1277,7 +1284,7 @@ function ChildReconciler(shouldTrackSideEffects) {
 
       throwOnInvalidObjectType(returnFiber, newChild);
     }
-
+    // 处理string类型
     if (typeof newChild === 'string' || typeof newChild === 'number') {
       return placeSingleChild(
         reconcileSingleTextNode(
@@ -1296,6 +1303,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
 
     // Remaining cases are all treated as empty.
+    // 剩余的案例都被视为空的。
     return deleteRemainingChildren(returnFiber, currentFirstChild);
   }
 
