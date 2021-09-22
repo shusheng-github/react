@@ -119,6 +119,7 @@ function FiberNode(
   mode: TypeOfMode,
 ) {
   // Instance实例
+  // 作为静态数据结构的属性
   this.tag = tag;
   this.key = key;
   this.elementType = null;
@@ -126,6 +127,7 @@ function FiberNode(
   this.stateNode = null;
 
   // Fiber
+  // 用于连接其他Fiber节点形成Fiber树
   this.return = null;
   this.child = null;
   this.sibling = null;
@@ -134,6 +136,7 @@ function FiberNode(
   this.ref = null;
 
   // 存放内存中fiber内容
+  // 动态工作单元的属性
   this.pendingProps = pendingProps;
   this.memoizedProps = null;
   this.updateQueue = null;
@@ -147,9 +150,11 @@ function FiberNode(
   this.subtreeFlags = NoFlags;
   this.deletions = null;
 
+  // 调度优先级相关
   this.lanes = NoLanes;
   this.childLanes = NoLanes;
 
+  // 指向该feiber在另一次更新时对应的fiber
   this.alternate = null;
 
   if (enableProfilerTimer) {
