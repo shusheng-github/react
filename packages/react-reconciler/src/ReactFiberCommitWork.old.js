@@ -1053,10 +1053,10 @@ function commitAttachRef(finishedWork: Fiber) {
     const instance = finishedWork.stateNode;
     let instanceToUse;
     switch (finishedWork.tag) {
-      case HostComponent:
+      case HostComponent: //元素节点 获取元素
         instanceToUse = getPublicInstance(instance);
         break;
-      default:
+      default: // 类组件直接使用实例
         instanceToUse = instance;
     }
     // Moved outside to ensure DCE works with this flag

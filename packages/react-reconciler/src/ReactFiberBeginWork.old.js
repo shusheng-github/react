@@ -512,11 +512,14 @@ function updateMemoComponent(
     const prevProps = currentChild.memoizedProps;
     // Default to shallow comparison
     let compare = Component.compare;
+    // //如果 memo 有第二个参数，则用二个参数判定，没有则浅比较props是否相等。
     compare = compare !== null ? compare : shallowEqual;
     if (compare(prevProps, nextProps) && current.ref === workInProgress.ref) {
+      // //已经完成工作停止向下调和节点。
       return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
     }
   }
+  // 返回将要更新组件,memo包装的组件对应的fiber，继续向下调和更新。
   // React DevTools reads this flag.
   workInProgress.flags |= PerformedWork;
   const newChild = createWorkInProgress(currentChild, nextProps);
@@ -928,8 +931,14 @@ function updateProfiler(
   return workInProgress.child;
 }
 
+// 会在两种情况下执行该函数
+// 1、类组件的更新过程会执行
+// 2、更新HostComponent的时候，即更新dom元素的时候
 function markRef(current: Fiber | null, workInProgress: Fiber) {
   const ref = workInProgress.ref;
+  // 当fiber 初始化的时候，第一次 ref 处理(current === null && ref !== null)的时候
+  // 或者fiber 更新的时候，但是 ref 对象的指向变了(current !== null && current.ref !== ref)的时候
+  // 会给ref添加一个effect
   if (
     (current === null && ref !== null) ||
     (current !== null && current.ref !== ref)

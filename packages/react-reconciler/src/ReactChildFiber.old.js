@@ -177,6 +177,7 @@ function coerceRef(
         let refs = inst.refs;
         if (refs === emptyRefsObject) {
           // This is a lazy pooled frozen object, so we need to initialize.
+          // 这是一个懒惰的池化冻结对象，所以我们需要初始化。
           refs = inst.refs = {};
         }
         if (value === null) {

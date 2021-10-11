@@ -154,6 +154,7 @@ const pureComponentPrototype = (PureComponent.prototype = new ComponentDummy());
 pureComponentPrototype.constructor = PureComponent;
 // Avoid an extra prototype jump for these methods.
 Object.assign(pureComponentPrototype, Component.prototype);
+// pureComponentPrototype 纯组件构造函数的 prototype 对象，绑定isPureReactComponent 属性
 pureComponentPrototype.isPureReactComponent = true;
 
 export {Component, PureComponent};
