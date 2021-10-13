@@ -53,7 +53,7 @@ export function registerDirectEvent(
       );
     }
   }
-
+  // 根据 onClick 获取  onClick 依赖的事件数组 [ 'click' ]。
   registrationNameDependencies[registrationName] = dependencies;
 
   if (__DEV__) {
@@ -66,6 +66,7 @@ export function registerDirectEvent(
   }
 
   for (let i = 0; i < dependencies.length; i++) {
+     //  addEventListener 绑定事件监听器
     allNativeEvents.add(dependencies[i]);
   }
 }

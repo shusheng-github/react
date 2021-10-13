@@ -1528,8 +1528,10 @@ function renderRootConcurrent(root: FiberRoot, lanes: Lanes) {
 }
 
 /** @noinline */
+// 低优先级
 function workLoopConcurrent() {
   // Perform work until Scheduler asks us to yield
+  // 执行工作直到调度程序要求我们让步
   while (workInProgress !== null && !shouldYield()) {
     performUnitOfWork(workInProgress);
   }
