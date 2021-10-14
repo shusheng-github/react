@@ -348,6 +348,7 @@ function areHookInputsEqual(
   return true;
 }
 
+// hooks调用的起始方法
 export function renderWithHooks<Props, SecondArg>(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -370,8 +371,8 @@ export function renderWithHooks<Props, SecondArg>(
       current !== null && current.type !== workInProgress.type;
   }
 
-  workInProgress.memoizedState = null;
-  workInProgress.updateQueue = null;
+  workInProgress.memoizedState = null;  //每一次执行函数组件之前，先清空状态 （用于存放hooks列表）
+  workInProgress.updateQueue = null;  //清空状态（用于存放effect list）
   workInProgress.lanes = NoLanes;
 
   // The following should have already been reset
@@ -407,6 +408,8 @@ export function renderWithHooks<Props, SecondArg>(
         : HooksDispatcherOnUpdate;
   }
 
+  // 执行我们真正函数组件，所有的hooks将依次执行
+  // Component ( props ， secondArg ) 这个时候函数组件被真正的执行，里面每一个 hooks 也将依次执行。
   let children = Component(props, secondArg);
 
   // Check if there was a render phase update
@@ -450,6 +453,7 @@ export function renderWithHooks<Props, SecondArg>(
 
   // We can assume the previous dispatcher is always this one, since we set it
   // at the beginning of the render phase and there's no re-entrancy.
+  // 将hooks变成第一种，防止hooks在函数组件外部调用，调用直接报错。
   ReactCurrentDispatcher.current = ContextOnlyDispatcher;
 
   if (__DEV__) {
@@ -594,6 +598,7 @@ export function resetHooksAfterThrow(): void {
   didScheduleRenderPhaseUpdateDuringThisPass = false;
 }
 
+// 每一个hooks 初始化都会执行 mountWorkInProgressHook
 function mountWorkInProgressHook(): Hook {
   const hook: Hook = {
     memoizedState: null,
