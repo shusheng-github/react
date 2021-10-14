@@ -598,7 +598,7 @@ export function setInitialProperties(
 }
 
 // Calculate the diff between the two objects. 计算两个对象之间的差异。
-// diffProperties 函数在 diff props 如果发现是合成事件( onClick ) 就会调用 legacyListenToEvent 函数。注册事件监听器。接下来看一下 legacyListenToEvent 是如何注册事件的。
+// diffProperties 函数在 diff props 如果发现是合成事件( onClick ) 就会调用 legacyListenToEvent 函数注册事件监听器。接下来看一下 legacyListenToEvent 是如何注册事件的。
 export function diffProperties(
   domElement: Element,
   tag: string,

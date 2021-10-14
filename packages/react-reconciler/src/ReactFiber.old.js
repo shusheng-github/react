@@ -120,30 +120,30 @@ function FiberNode(
 ) {
   // Instance实例
   // 作为静态数据结构的属性
-  this.tag = tag;
-  this.key = key;
+  this.tag = tag; // fiber 标签 证明是什么类型fiber。
+  this.key = key; // key调和子节点时候用到。 
   this.elementType = null;
-  this.type = null;
-  this.stateNode = null;
+  this.type = null; // dom元素是对应的元素类型，比如div，组件指向组件对应的类或者函数。  
+  this.stateNode = null; // 指向对应的真实dom元素，类组件指向组件实例，可以被ref获取。
 
   // Fiber
   // 用于连接其他Fiber节点形成Fiber树
-  this.return = null;
-  this.child = null;
-  this.sibling = null;
-  this.index = 0;
+  this.return = null; // 指向父级fiber
+  this.child = null; // 指向子级fiber
+  this.sibling = null; // 指向兄弟fiber 
+  this.index = 0; // 索引
 
-  this.ref = null;
+  this.ref = null; // ref指向，ref函数，或者ref对象。
 
   // 存放内存中fiber内容
   // 动态工作单元的属性
-  this.pendingProps = pendingProps;
-  this.memoizedProps = null;
-  this.updateQueue = null;
-  this.memoizedState = null;
-  this.dependencies = null;
+  this.pendingProps = pendingProps; // 在一次更新中，代表element创建
+  this.memoizedProps = null; //记录上一次更新完毕后的props
+  this.updateQueue = null; // 类组件存放setState更新队列，函数组件存放
+  this.memoizedState = null; // 类组件保存state信息，函数组件保存hooks信息，dom元素为null
+  this.dependencies = null; // context或是时间的依赖项
 
-  this.mode = mode;
+  this.mode = mode; //描述fiber树的模式，比如 ConcurrentMode 模式
 
   // Effects
   this.flags = NoFlags;
@@ -155,7 +155,7 @@ function FiberNode(
   this.childLanes = NoLanes;
 
   // 指向该feiber在另一次更新时对应的fiber
-  this.alternate = null;
+  this.alternate = null; //双缓存树，指向缓存的fiber。更新阶段，两颗树互相交替。
 
   if (enableProfilerTimer) {
     // Note: The following is done to avoid a v8 performance cliff.

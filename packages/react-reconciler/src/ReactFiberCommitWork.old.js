@@ -245,6 +245,7 @@ function safelyAttachRef(current: Fiber, nearestMountedAncestor: Fiber | null) {
   }
 }
 
+// 卸载ref
 function safelyDetachRef(current: Fiber, nearestMountedAncestor: Fiber | null) {
   const ref = current.ref;
   if (ref !== null) {
@@ -290,6 +291,9 @@ function safelyCallDestroy(
 let focusedInstanceHandle: null | Fiber = null;
 let shouldFireAfterActiveInstanceBlur: boolean = false;
 
+// Before mutation 阶段（执行 DOM 操作前）；
+// 因为 Before mutation 还没修改真实的 DOM ，是获取 DOM 快照的最佳时期，如果是类组件有 getSnapshotBeforeUpdate ，那么会执行这个生命周期。
+// 会异步调用 useEffect ，在生命周期章节讲到 useEffect 是采用异步调用的模式，其目的就是防止同步执行时阻塞浏览器做视图渲染。
 export function commitBeforeMutationEffects(
   root: FiberRoot,
   firstChild: Fiber,
@@ -342,6 +346,7 @@ function commitBeforeMutationEffects_complete() {
     const fiber = nextEffect;
     setCurrentDebugFiberInDEV(fiber);
     try {
+      // 调用getSnapshotBeforeUpdates
       commitBeforeMutationEffectsOnFiber(fiber);
     } catch (error) {
       reportUncaughtErrorInDEV(error);
@@ -2025,6 +2030,9 @@ function commitResetTextContent(current: Fiber) {
   resetTextContent(current.stateNode);
 }
 
+// mutation 阶段（执行 DOM 操作）；
+// 置空 ref ，在 ref 章节讲到对于 ref 的处理。
+// 对新增元素，更新元素，删除元素。进行真实的 DOM 操作。
 export function commitMutationEffects(
   root: FiberRoot,
   firstChild: Fiber,
@@ -2215,6 +2223,9 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
   }
 }
 
+// layout 阶段（执行 DOM 操作后）
+// commitLayoutEffectOnFiber 对于类组件，会执行生命周期，setState 的callback，对于函数组件会执行 useLayoutEffect 钩子。
+// 如果有 ref ，会重新赋值 ref 。
 export function commitLayoutEffects(
   finishedWork: Fiber,
   root: FiberRoot,

@@ -1441,8 +1441,12 @@ function renderRootSync(root: FiberRoot, lanes: Lanes) {
 
 // The work loop is an extremely hot path. Tell Closure not to inline it.
 /** @noinline */
+// 每一个 fiber 可以看作一个执行的单元，在调和过程中，每一个发生更新的 fiber 都会作为一次 workInProgress 。
+// 那么 workLoop 就是执行每一个单元的调度器，如果渲染没有被中断，那么 workLoop 会遍历一遍 fiber 树。
+// performUnitOfWork 包括两个阶段 beginWork 和 completeWork 。
 function workLoopSync() {
   // Already timed out, so perform work without checking if we need to yield.
+  // 已经超时，所以在不检查我们是否需要让步的情况下执行工作。
   while (workInProgress !== null) {
     performUnitOfWork(workInProgress);
   }
@@ -1537,6 +1541,14 @@ function workLoopConcurrent() {
   }
 }
 
+// performUnitOfWork 包括两个阶段 beginWork 和 completeWork 。
+// beginWork：是向下调和的过程。就是由 fiberRoot 按照 child 指针逐层向下调和，
+// 期间会执行函数组件，实例类组件，diff 调和子节点，打不同effectTag。
+
+// completeUnitOfWork：是向上归并的过程，如果有兄弟节点，会返回 sibling兄弟，没有返回 return 父级，
+// 一直返回到 fiebrRoot ，期间可以形成effectList，对于初始化流程会创建 DOM ，对于 DOM 元素进行事件收集，
+// 处理style，className等。
+
 function performUnitOfWork(unitOfWork: Fiber): void {
   // The current, flushed, state of this fiber is the alternate. Ideally
   // nothing should rely on this, but relying on it here means that we don't
@@ -1565,6 +1577,8 @@ function performUnitOfWork(unitOfWork: Fiber): void {
   ReactCurrentOwner.current = null;
 }
 
+// 首先 completeUnitOfWork 会将 effectTag 的 Fiber 节点会被保存在一条被称为 effectList 的单向链表中。
+// 在 commit 阶段，将不再需要遍历每一个 fiber ，只需要执行更新 effectList 就可以了。
 function completeUnitOfWork(unitOfWork: Fiber): void {
   // Attempt to complete the current unit of work, then move to the next
   // sibling. If there are no more siblings, return to the parent fiber.

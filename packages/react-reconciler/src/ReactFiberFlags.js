@@ -1,7 +1,7 @@
 /*
  * @Author: Shusheng
  * @Date: 2021-08-06 10:12:44
- * @LastEditTime: 2021-08-06 10:21:37
+ * @LastEditTime: 2021-10-14 15:03:14
  * @LastEditors: Shusheng
  * @Description: 
  */
@@ -27,16 +27,20 @@ export const PerformedWork = /*                */ 0b00000000000000000000001;
 // You can change the rest (and add more).
 // DOM需要插入到页面中并更新
 export const Placement = /*                    */ 0b00000000000000000000010;
-// DOM需要删除
+// 更新fiebr
 export const Update = /*                       */ 0b00000000000000000000100;
 export const PlacementAndUpdate = /*           */ Placement | Update;
+// 删除fiebr
 export const Deletion = /*                     */ 0b00000000000000000001000;
 export const ChildDeletion = /*                */ 0b00000000000000000010000;
 export const ContentReset = /*                 */ 0b00000000000000000100000;
+// // setState的 callback
 export const Callback = /*                     */ 0b00000000000000001000000;
 export const DidCapture = /*                   */ 0b00000000000000010000000;
 export const Ref = /*                          */ 0b00000000000000100000000;
+// 快照
 export const Snapshot = /*                     */ 0b00000000000001000000000;
+// // useEffect的副作用
 export const Passive = /*                      */ 0b00000000000010000000000;
 export const Hydrating = /*                    */ 0b00000000000100000000000;
 export const HydratingAndUpdate = /*           */ Hydrating | Update;

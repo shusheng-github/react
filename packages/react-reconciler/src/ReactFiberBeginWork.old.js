@@ -3621,6 +3621,9 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
   return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
 }
 
+// 对于组件，执行部分生命周期，执行 render ，得到最新的 children 。
+// 向下遍历调和 children ，复用 oldFiber ( diff 算法)，diff 流程在第十二章已经讲过了。
+// 打不同的副作用标签 effectTag ，比如类组件的生命周期，或者元素的增加，删除，更新。
 function beginWork(
   current: Fiber | null,
   workInProgress: Fiber,

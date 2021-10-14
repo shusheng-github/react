@@ -837,6 +837,9 @@ export function completeSuspendedOffscreenHostContainer(
   bubbleProperties(workInProgress);
 }
 
+// completeWork 阶段对于组件处理 context ；
+// 对于元素标签初始化，会创建真实 DOM ，将子孙 DOM 节点插入刚生成的 DOM 节点中；
+// 会触发 diffProperties 处理 props ，比如事件收集，style，className 处理
 function completeWork(
   current: Fiber | null,
   workInProgress: Fiber,
