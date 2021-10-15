@@ -612,9 +612,11 @@ function mountWorkInProgressHook(): Hook {
 
   if (workInProgressHook === null) {
     // This is the first hook in the list
+    // 这是列表中的第一个钩子
     currentlyRenderingFiber.memoizedState = workInProgressHook = hook;
   } else {
     // Append to the end of the list
+    // 将新钩子添加在列表结尾
     workInProgressHook = workInProgressHook.next = hook;
   }
   return workInProgressHook;
@@ -1921,6 +1923,7 @@ function dispatchAction<S, A>(
   const eventTime = requestEventTime();
   const lane = requestUpdateLane(fiber);
 
+  // 创建一个update
   const update: Update<S, A> = {
     lane,
     action,
@@ -1937,10 +1940,13 @@ function dispatchAction<S, A>(
     // This is a render phase update. Stash it in a lazily-created map of
     // queue -> linked list of updates. After this render pass, we'll restart
     // and apply the stashed updates on top of the work-in-progress hook.
+    /* 这是一个渲染阶段更新。 将其存储在延迟创建的队列映射 -> 更新链接列表中。 
+    在此渲染过程之后，我们将重新启动并在工作中的钩子顶部应用隐藏的更新。 */
     didScheduleRenderPhaseUpdateDuringThisPass = didScheduleRenderPhaseUpdate = true;
     const pending = queue.pending;
     if (pending === null) {
       // This is the first update. Create a circular list.
+      // 第一次更新，创建一个循环链表
       update.next = update;
     } else {
       update.next = pending.next;
@@ -1980,7 +1986,7 @@ function dispatchAction<S, A>(
       // The queue is currently empty, which means we can eagerly compute the
       // next state before entering the render phase. If the new state is the
       // same as the current state, we may be able to bail out entirely.
-      const lastRenderedReducer = queue.lastRenderedReducer;
+      const lastRenderedReducer = queue.lastRenderedReducer;  
       if (lastRenderedReducer !== null) {
         let prevDispatcher;
         if (__DEV__) {
@@ -1988,15 +1994,15 @@ function dispatchAction<S, A>(
           ReactCurrentDispatcher.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
         }
         try {
-          const currentState: S = (queue.lastRenderedState: any);
-          const eagerState = lastRenderedReducer(currentState, action);
+          const currentState: S = (queue.lastRenderedState: any); //上一次的state
+          const eagerState = lastRenderedReducer(currentState, action); //这一次新的state
           // Stash the eagerly computed state, and the reducer used to compute
           // it, on the update object. If the reducer hasn't changed by the
           // time we enter the render phase, then the eager state can be used
           // without calling the reducer again.
           update.eagerReducer = lastRenderedReducer;
           update.eagerState = eagerState;
-          if (is(eagerState, currentState)) {
+          if (is(eagerState, currentState)) { //如果每一个都改变相同的state，那么组件不更新 
             // Fast path. We can bail out without scheduling React to re-render.
             // It's still possible that we'll need to rebase this update later,
             // if the component re-renders for a different reason and by that
@@ -2018,6 +2024,7 @@ function dispatchAction<S, A>(
         warnIfNotCurrentlyActingUpdatesInDev(fiber);
       }
     }
+    // 发起调度更新, 得到root
     const root = scheduleUpdateOnFiber(fiber, lane, eventTime);
 
     if (isTransitionLane(lane) && root !== null) {
