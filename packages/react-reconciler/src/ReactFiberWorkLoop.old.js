@@ -1673,9 +1673,11 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
   }
 }
 
+// commit 开始阶段
 function commitRoot(root) {
   // TODO: This no longer makes any sense. We already wrap the mutation and
   // layout phases. Should be able to remove.
+  // 这已经没有任何意义了。我们已经包裹了突变和布局阶段。应该可以删除。
   const previousUpdateLanePriority = getCurrentUpdatePriority();
   const prevTransition = ReactCurrentBatchConfig.transition;
   try {
@@ -1696,6 +1698,9 @@ function commitRootImpl(root, renderPriorityLevel) {
     // means `flushPassiveEffects` will sometimes result in additional
     // passive effects. So we need to keep flushing in a loop until there are
     // no more pending effects.
+    // `flushPassiveEffects`会在最后调用`flushSyncUpdateQueue`，
+    // 这意味着`flushPassiveEffects`有时会导致额外的被动效果。
+    // 所以我们需要在一个循环中不断刷新，直到没有更多的待处理效果为止
     // TODO: Might be better if `flushPassiveEffects` did not automatically
     // flush synchronous work at the end, to avoid factoring hazards like this.
     flushPassiveEffects();
@@ -1823,6 +1828,9 @@ function commitRootImpl(root, renderPriorityLevel) {
     // The first phase a "before mutation" phase. We use this phase to read the
     // state of the host tree right before we mutate it. This is where
     // getSnapshotBeforeUpdate is called.
+    // TODO: commitBeforeMutationEffects
+    // 第一个阶段是 "before mutation "阶段。我们用这个阶段来读取宿主树的状态，就在我们mutate它之前。
+    // 这就是getSnapshotBeforeUpdate被调用的地方。
     const shouldFireAfterActiveInstanceBlur = commitBeforeMutationEffects(
       root,
       finishedWork,
@@ -1841,6 +1849,8 @@ function commitRootImpl(root, renderPriorityLevel) {
     }
 
     // The next phase is the mutation phase, where we mutate the host tree.
+    // commitMutationEffects
+    // 下一个阶段是mutation阶段，我们对宿主树进行mutation
     commitMutationEffects(root, finishedWork, lanes);
 
     if (enableCreateEventHandleAPI) {
@@ -1867,6 +1877,8 @@ function commitRootImpl(root, renderPriorityLevel) {
     if (enableSchedulingProfiler) {
       markLayoutEffectsStarted(lanes);
     }
+    // commitLayoutEffects
+    // commit之后阶段
     commitLayoutEffects(finishedWork, root, lanes);
     if (__DEV__) {
       if (enableDebugTracing) {
@@ -1959,6 +1971,8 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // Always call this before exiting `commitRoot`, to ensure that any
   // additional work on this root is scheduled.
+  // 完成阶段
+  // 始终在退出`commitRoot`之前调用这个，以确保在这个根上的任何额外工作都被安排。
   ensureRootIsScheduled(root, now());
 
   if (hasUncaughtError) {
@@ -1984,6 +1998,7 @@ function commitRootImpl(root, renderPriorityLevel) {
   }
 
   // If layout work was scheduled, flush it now.
+  // 如果安排了scheduled工作，那么现在就把它处理掉。
   flushSyncCallbacks();
 
   if (__DEV__) {
