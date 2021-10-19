@@ -1765,6 +1765,8 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // commitRoot never returns a continuation; it always finishes synchronously.
   // So we can clear these now to allow a new callback to be scheduled.
+  // commitRoot从来不会返回一个continuation；它总是同步完成的。
+  // 所以我们现在可以清除这些，以允许一个新的回调被安排。
   root.callbackNode = null;
   root.callbackPriority = NoLane;
 
@@ -1806,10 +1808,14 @@ function commitRootImpl(root, renderPriorityLevel) {
   }
 
   // Check if there are any effects in the whole tree.
+  // 检查整个树中是否有任何影响。
+
   // TODO: This is left over from the effect list implementation, where we had
   // to check for the existence of `firstEffect` to satisfy Flow. I think the
   // only other reason this optimization exists is because it affects profiling.
   // Reconsider whether this is necessary.
+  // 这是从效果列表的实现中遗留下来的，当时我们必须检查`firstEffect`的存在以满足Flow。
+  // 我认为这个优化存在的唯一原因是它影响了分析。重新考虑一下这是否有必要。
   const subtreeHasEffects =
     (finishedWork.subtreeFlags &
       (BeforeMutationMask | MutationMask | LayoutMask | PassiveMask)) !==
@@ -1831,15 +1837,19 @@ function commitRootImpl(root, renderPriorityLevel) {
     executionContext |= CommitContext;
 
     // Reset this to null before calling lifecycles
+    // 在调用生命周期之前，将其重置为空
     ReactCurrentOwner.current = null;
 
     // The commit phase is broken into several sub-phases. We do a separate pass
     // of the effect list for each phase: all mutation effects come before all
     // layout effects, and so on.
+    // 提交阶段被分成几个子阶段。我们对每个阶段的效果列表进行单独的传递：所有的mutation effects都在所有的布局效果之前，以此类推。
 
     // The first phase a "before mutation" phase. We use this phase to read the
     // state of the host tree right before we mutate it. This is where
     // getSnapshotBeforeUpdate is called.
+    // 第一个阶段是 "before mutation "阶段。我们用这个阶段来读取宿主树的状态，然后再进行mutation。
+    // 这就是getSnapshotBeforeUpdate被调用的地方。
 
     // TODO: commitBeforeMutationEffects
     // 第一个阶段是 "before mutation "阶段。我们用这个阶段来读取宿主树的状态，就在我们mutate它之前。
@@ -1853,12 +1863,15 @@ function commitRootImpl(root, renderPriorityLevel) {
     if (enableProfilerTimer) {
       // Mark the current commit time to be shared by all Profilers in this
       // batch. This enables them to be grouped later.
+      // 将当前的提交时间标记为本批中所有剖析器共享。这使得它们以后可以被分组。
       recordCommitTime();
     }
 
     if (enableProfilerTimer && enableProfilerNestedUpdateScheduledHook) {
       // Track the root here, rather than in commitLayoutEffects(), because of ref setters.
       // Updates scheduled during ref detachment should also be flagged.
+      // 在这里追踪根部，而不是在commitLayoutEffects()中，因为有ref setters。
+      // 在ref detachment期间安排的更新也应该被标记出来。
       rootCommittingMutationOrLayoutEffects = root;
     }
 
@@ -1880,11 +1893,14 @@ function commitRootImpl(root, renderPriorityLevel) {
     // the mutation phase, so that the previous tree is still current during
     // componentWillUnmount, but before the layout phase, so that the finished
     // work is current during componentDidMount/Update.
+    // 双缓存机制，由workInProgress指向current
     root.current = finishedWork;
 
     // The next phase is the layout phase, where we call effects that read
     // the host tree after it's been mutated. The idiomatic use case for this is
     // layout, but class component lifecycles also fire here for legacy reasons.
+    // 下一个阶段是布局阶段，我们在这里调用读取host树mutation后的效果。
+    // 这方面的习惯性用例是布局，但由于遗留原因，类组件的生命周期也在这里启动
     if (__DEV__) {
       if (enableDebugTracing) {
         logLayoutEffectsStarted(lanes);
@@ -1989,7 +2005,7 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // Always call this before exiting `commitRoot`, to ensure that any
   // additional work on this root is scheduled.
-  
+
   // 完成阶段
   // 在离开commitRoot函数前调用，触发一次新的调度，确保任何附加的任务被调度。
   // 完成commitRoot之前执行
