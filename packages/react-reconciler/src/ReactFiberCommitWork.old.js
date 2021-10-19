@@ -294,16 +294,19 @@ let shouldFireAfterActiveInstanceBlur: boolean = false;
 // Before mutation 阶段（执行 DOM 操作前）；
 // 因为 Before mutation 还没修改真实的 DOM ，是获取 DOM 快照的最佳时期，如果是类组件有 getSnapshotBeforeUpdate ，那么会执行这个生命周期。
 // 会异步调用 useEffect ，在生命周期章节讲到 useEffect 是采用异步调用的模式，其目的就是防止同步执行时阻塞浏览器做视图渲染。
+// before mutation阶段（执行DOM操作前） commitBeforeMutationEffects
 export function commitBeforeMutationEffects(
   root: FiberRoot,
   firstChild: Fiber,
 ) {
+  // 处理focus状态
   focusedInstanceHandle = prepareForCommit(root.containerInfo);
 
   nextEffect = firstChild;
   commitBeforeMutationEffects_begin();
 
   // We no longer need to track the active instance fiber
+  //  我们不再需要跟踪活动实例的fiber
   const shouldFire = shouldFireAfterActiveInstanceBlur;
   shouldFireAfterActiveInstanceBlur = false;
   focusedInstanceHandle = null;
@@ -317,8 +320,10 @@ function commitBeforeMutationEffects_begin() {
 
     // This phase is only used for beforeActiveInstanceBlur.
     // Let's skip the whole loop if it's off.
+    // 这个阶段只用于beforeActiveInstanceBlur。如果它是关闭的，我们就跳过整个循环。
     if (enableCreateEventHandleAPI) {
       // TODO: Should wrap this in flags check, too, as optimization
+      // 应该把这一点也包在标志检查中，作为优化。
       const deletions = fiber.deletions;
       if (deletions !== null) {
         for (let i = 0; i < deletions.length; i++) {
@@ -346,7 +351,7 @@ function commitBeforeMutationEffects_complete() {
     const fiber = nextEffect;
     setCurrentDebugFiberInDEV(fiber);
     try {
-      // 调用getSnapshotBeforeUpdates
+      // 调用getSnapshotBeforeUpdate
       commitBeforeMutationEffectsOnFiber(fiber);
     } catch (error) {
       reportUncaughtErrorInDEV(error);
@@ -372,7 +377,9 @@ function commitBeforeMutationEffectsOnFiber(finishedWork: Fiber) {
   if (enableCreateEventHandleAPI) {
     if (!shouldFireAfterActiveInstanceBlur && focusedInstanceHandle !== null) {
       // Check to see if the focused element was inside of a hidden (Suspense) subtree.
+      // 检查被关注的元素是否在一个隐藏的（Suspense）子树内。
       // TODO: Move this out of the hot path using a dedicated effect tag.
+      // 使用一个专门的效果标签将其移出热路径。
       if (
         finishedWork.tag === SuspenseComponent &&
         isSuspenseBoundaryBeingHidden(current, finishedWork) &&
@@ -428,6 +435,11 @@ function commitBeforeMutationEffectsOnFiber(finishedWork: Fiber) {
               }
             }
           }
+          // getSnapshotBeforeUpdate() 在最近一次渲染输出（提交到 DOM 节点）之前调用。
+          // 它使得组件能在发生更改之前从 DOM 中捕获一些信息（例如，滚动位置）。
+          // 此生命周期方法的任何返回值将作为参数传递给 componentDidUpdate()。
+
+          // 调用getSnapshotBeforeUpdate生命周期钩子
           const snapshot = instance.getSnapshotBeforeUpdate(
             finishedWork.elementType === finishedWork.type
               ? prevProps
@@ -890,6 +902,9 @@ function commitLayoutEffectOnFiber(
             // Schedule a passive effect for this Profiler to call onPostCommit hooks.
             // This effect should be scheduled even if there is no onPostCommit callback for this Profiler,
             // because the effect is also where times bubble to parent Profilers.
+            // 为这个剖析器安排一个被动效果，以调用onPostCommit钩子。即使这个Profiler没有onPostCommit回调，
+            // 也应该安排这个效果，因为这个效果也是时间冒泡到父Profiler的地方。
+            // 异步调用useEffect
             enqueuePendingPassiveProfilerEffect(finishedWork);
 
             // Propagate layout effect durations to the next nearest Profiler ancestor.
