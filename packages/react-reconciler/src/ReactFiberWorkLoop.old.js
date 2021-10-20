@@ -1677,10 +1677,11 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
 function commitRoot(root) {
   // TODO: This no longer makes any sense. We already wrap the mutation and
   // layout phases. Should be able to remove.
-  // 这已经没有任何意义了。我们已经包裹了突变和布局阶段。应该可以删除。
+  // 这已经没有任何意义了。我们已经包裹了mutation和layout阶段。应该可以删除。
   const previousUpdateLanePriority = getCurrentUpdatePriority();
   const prevTransition = ReactCurrentBatchConfig.transition;
   try {
+    // ReactCurrentBatchConfig 循环器
     ReactCurrentBatchConfig.transition = 0;
     setCurrentUpdatePriority(DiscreteEventPriority);
     commitRootImpl(root, previousUpdateLanePriority);
@@ -1707,6 +1708,8 @@ function commitRootImpl(root, renderPriorityLevel) {
     // 如果`flushPassiveEffects`不自动在最后冲刷同步工作的话，可能会更好。同步工作，以避免像这样的因果关系的危害，可能会更好
     // 触发useEffect回调与其他同步任务。由于这些任务可能触发新的渲染，所以这里要一直遍历执行直到没有任务
     flushPassiveEffects();
+    // 对于function component来说，如果有一个useEffect就会增加一个passiveeffect的effect
+    // 开始之前会查看是否有未执行的useEffect，如果有就优先执行
   } while (rootWithPendingPassiveEffects !== null);
   flushRenderPhaseStrictModeWarningsInDEV();
 
@@ -1792,12 +1795,17 @@ function commitRootImpl(root, renderPriorityLevel) {
   // If there are pending passive effects, schedule a callback to process them.
   // Do this as early as possible, so it is queued before anything else that
   // might get scheduled in the commit phase. (See #16714.)
+  // 如果有待处理的被动效果，安排一个回调来处理它们。尽可能早地这样做，
+  // 这样它就会排在提交阶段可能被安排的其他事情之前。(参见#16714）。)
   // TODO: Delete all other places that schedule the passive effect callback
   // They're redundant.
+  // 删除所有其他安排被动效果回调的地方 它们是多余的。
   if (
     (finishedWork.subtreeFlags & PassiveMask) !== NoFlags ||
     (finishedWork.flags & PassiveMask) !== NoFlags
   ) {
+    // 异步调用useEffect
+    // 在flushPassiveEffects方法内部会从全局变量rootWithPendingPassiveEffects获取effectList。
     if (!rootDoesHavePassiveEffects) {
       rootDoesHavePassiveEffects = true;
       scheduleCallback(NormalSchedulerPriority, () => {
@@ -2035,12 +2043,9 @@ function commitRootImpl(root, renderPriorityLevel) {
   }
 
   // If layout work was scheduled, flush it now.
-<<<<<<< HEAD
   // 如果安排了scheduled工作，那么现在就把它处理掉。
-=======
   // 执行同步任务，这样同步任务不需要等到下次事件循环再执行
   // 比如在 componentDidMount 中执行 setState 创建的更新会在这里被同步执行或useLayoutEffect
->>>>>>> c8cea67d224689cc14565c7e816fce4dd424504c
   flushSyncCallbacks();
 
   if (__DEV__) {
@@ -2058,11 +2063,15 @@ function commitRootImpl(root, renderPriorityLevel) {
 
 export function flushPassiveEffects(): boolean {
   // Returns whether passive effects were flushed.
+  // 返回被动效果是否被刷新。
   // TODO: Combine this check with the one in flushPassiveEFfectsImpl. We should
   // probably just combine the two functions. I believe they were only separate
   // in the first place because we used to wrap it with
+  // 把这个检查与flushPassiveEFfectsImpl中的检查结合起来。
+  // 我们也许应该把这两个函数合并起来。我相信它们最初是分开的，因为我们曾经用
   // `Scheduler.runWithPriority`, which accepts a function. But now we track the
   // priority within React itself, so we can mutate the variable directly.
+  // `Scheduler.runWithPriority`，它接受一个函数。但现在我们在React本身中跟踪优先级，所以我们可以直接mutation变量。
   if (rootWithPendingPassiveEffects !== null) {
     const renderPriority = lanesToEventPriority(pendingPassiveEffectsLanes);
     const priority = lowerEventPriority(DefaultEventPriority, renderPriority);
