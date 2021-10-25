@@ -1673,13 +1673,15 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
   }
 }
 
-// commit的起点
+// commit 开始阶段
 function commitRoot(root) {
   // TODO: This no longer makes any sense. We already wrap the mutation and
   // layout phases. Should be able to remove.
+  // 这已经没有任何意义了。我们已经包裹了mutation和layout阶段。应该可以删除。
   const previousUpdateLanePriority = getCurrentUpdatePriority();
   const prevTransition = ReactCurrentBatchConfig.transition;
   try {
+    // ReactCurrentBatchConfig 循环器
     ReactCurrentBatchConfig.transition = 0;
     setCurrentUpdatePriority(DiscreteEventPriority);
     commitRootImpl(root, previousUpdateLanePriority);
@@ -1697,14 +1699,17 @@ function commitRootImpl(root, renderPriorityLevel) {
     // means `flushPassiveEffects` will sometimes result in additional
     // passive effects. So we need to keep flushing in a loop until there are
     // no more pending effects.
-    // `flushPassiveEffects`会在最后调用`flushSyncUpdateQueue`，这意味着`flushPassiveEffects`有时会导致额外的被动效果。
-    // 这意味着`flushPassiveEffects`有时会导致额外的被动效果。所以我们需要在一个循环中不断刷新，直到没有更多的待处理效果。
-
+    // `flushPassiveEffects`会在最后调用`flushSyncUpdateQueue`，
+    // 这意味着`flushPassiveEffects`有时会导致额外的被动效果。
+    // 所以我们需要在一个循环中不断刷新，直到没有更多的待处理效果为止
+    
     // TODO: Might be better if `flushPassiveEffects` did not automatically
     // flush synchronous work at the end, to avoid factoring hazards like this.
     // 如果`flushPassiveEffects`不自动在最后冲刷同步工作的话，可能会更好。同步工作，以避免像这样的因果关系的危害，可能会更好
     // 触发useEffect回调与其他同步任务。由于这些任务可能触发新的渲染，所以这里要一直遍历执行直到没有任务
     flushPassiveEffects();
+    // 对于function component来说，如果有一个useEffect就会增加一个passiveeffect的effect
+    // 开始之前会查看是否有未执行的useEffect，如果有就优先执行
   } while (rootWithPendingPassiveEffects !== null);
   flushRenderPhaseStrictModeWarningsInDEV();
 
@@ -1763,6 +1768,8 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // commitRoot never returns a continuation; it always finishes synchronously.
   // So we can clear these now to allow a new callback to be scheduled.
+  // commitRoot从来不会返回一个continuation；它总是同步完成的。
+  // 所以我们现在可以清除这些，以允许一个新的回调被安排。
   root.callbackNode = null;
   root.callbackPriority = NoLane;
 
@@ -1788,12 +1795,17 @@ function commitRootImpl(root, renderPriorityLevel) {
   // If there are pending passive effects, schedule a callback to process them.
   // Do this as early as possible, so it is queued before anything else that
   // might get scheduled in the commit phase. (See #16714.)
+  // 如果有待处理的被动效果，安排一个回调来处理它们。尽可能早地这样做，
+  // 这样它就会排在提交阶段可能被安排的其他事情之前。(参见#16714）。)
   // TODO: Delete all other places that schedule the passive effect callback
   // They're redundant.
+  // 删除所有其他安排被动效果回调的地方 它们是多余的。
   if (
     (finishedWork.subtreeFlags & PassiveMask) !== NoFlags ||
     (finishedWork.flags & PassiveMask) !== NoFlags
   ) {
+    // 异步调用useEffect
+    // 在flushPassiveEffects方法内部会从全局变量rootWithPendingPassiveEffects获取effectList。
     if (!rootDoesHavePassiveEffects) {
       rootDoesHavePassiveEffects = true;
       scheduleCallback(NormalSchedulerPriority, () => {
@@ -1804,10 +1816,14 @@ function commitRootImpl(root, renderPriorityLevel) {
   }
 
   // Check if there are any effects in the whole tree.
+  // 检查整个树中是否有任何影响。
+
   // TODO: This is left over from the effect list implementation, where we had
   // to check for the existence of `firstEffect` to satisfy Flow. I think the
   // only other reason this optimization exists is because it affects profiling.
   // Reconsider whether this is necessary.
+  // 这是从效果列表的实现中遗留下来的，当时我们必须检查`firstEffect`的存在以满足Flow。
+  // 我认为这个优化存在的唯一原因是它影响了分析。重新考虑一下这是否有必要。
   const subtreeHasEffects =
     (finishedWork.subtreeFlags &
       (BeforeMutationMask | MutationMask | LayoutMask | PassiveMask)) !==
@@ -1835,12 +1851,17 @@ function commitRootImpl(root, renderPriorityLevel) {
     // The commit phase is broken into several sub-phases. We do a separate pass
     // of the effect list for each phase: all mutation effects come before all
     // layout effects, and so on.
+    // 提交阶段被分成几个子阶段。我们对每个阶段的效果列表进行单独的传递：所有的mutation effects都在所有的布局效果之前，以此类推。
 
     // The first phase a "before mutation" phase. We use this phase to read the
     // state of the host tree right before we mutate it. This is where
     // getSnapshotBeforeUpdate is called.
+    // 第一个阶段是 "before mutation "阶段。我们用这个阶段来读取宿主树的状态，然后再进行mutation。
+    // 这就是getSnapshotBeforeUpdate被调用的地方。
 
     // TODO: commitBeforeMutationEffects
+    // 第一个阶段是 "before mutation "阶段。我们用这个阶段来读取宿主树的状态，就在我们mutate它之前。
+    // 这就是getSnapshotBeforeUpdate被调用的地方。
     // before mutation阶段（执行DOM操作前）
     // commitBeforeMutationEffects 返回一个布尔值
     const shouldFireAfterActiveInstanceBlur = commitBeforeMutationEffects(
@@ -1851,18 +1872,22 @@ function commitRootImpl(root, renderPriorityLevel) {
     if (enableProfilerTimer) {
       // Mark the current commit time to be shared by all Profilers in this
       // batch. This enables them to be grouped later.
+      // 将当前的提交时间标记为本批中所有剖析器共享。这使得它们以后可以被分组。
       recordCommitTime();
     }
 
     if (enableProfilerTimer && enableProfilerNestedUpdateScheduledHook) {
       // Track the root here, rather than in commitLayoutEffects(), because of ref setters.
       // Updates scheduled during ref detachment should also be flagged.
+      // 在这里追踪根部，而不是在commitLayoutEffects()中，因为有ref setters。
+      // 在ref detachment期间安排的更新也应该被标记出来。
       rootCommittingMutationOrLayoutEffects = root;
     }
 
     // The next phase is the mutation phase, where we mutate the host tree.
 
     // TODO: commitMutationEffects
+    // 下一个阶段是mutation阶段，我们对宿主树进行mutation
     // mutation阶段（执行DOM操作）
     commitMutationEffects(root, finishedWork, lanes);
 
@@ -1878,11 +1903,14 @@ function commitRootImpl(root, renderPriorityLevel) {
     // componentWillUnmount, but before the layout phase, so that the finished
     // work is current during componentDidMount/Update.
     // 切换fiberRootNode指向的current Fiber树。
+    // 双缓存机制，由workInProgress指向current
     root.current = finishedWork;
 
     // The next phase is the layout phase, where we call effects that read
     // the host tree after it's been mutated. The idiomatic use case for this is
     // layout, but class component lifecycles also fire here for legacy reasons.
+    // 下一个阶段是布局阶段，我们在这里调用读取host树mutation后的效果。
+    // 这方面的习惯性用例是布局，但由于遗留原因，类组件的生命周期也在这里启动
     if (__DEV__) {
       if (enableDebugTracing) {
         logLayoutEffectsStarted(lanes);
@@ -1891,8 +1919,9 @@ function commitRootImpl(root, renderPriorityLevel) {
     if (enableSchedulingProfiler) {
       markLayoutEffectsStarted(lanes);
     }
+    
     // TODO: commitLayoutEffects
-    // layout阶段（执行DOM操作后）
+    // commit之后阶段 layout阶段（执行DOM操作后）
     commitLayoutEffects(finishedWork, root, lanes);
     if (__DEV__) {
       if (enableDebugTracing) {
@@ -1989,6 +2018,8 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // Always call this before exiting `commitRoot`, to ensure that any
   // additional work on this root is scheduled.
+
+  // 完成阶段
   // 在离开commitRoot函数前调用，触发一次新的调度，确保任何附加的任务被调度。
   // 完成commitRoot之前执行
   ensureRootIsScheduled(root, now());
@@ -2017,6 +2048,7 @@ function commitRootImpl(root, renderPriorityLevel) {
   }
 
   // If layout work was scheduled, flush it now.
+  // 如果安排了scheduled工作，那么现在就把它处理掉。
   // 执行同步任务，这样同步任务不需要等到下次事件循环再执行
   // 比如在 componentDidMount 中执行 setState 创建的更新会在这里被同步执行或useLayoutEffect
   flushSyncCallbacks();
@@ -2036,11 +2068,15 @@ function commitRootImpl(root, renderPriorityLevel) {
 
 export function flushPassiveEffects(): boolean {
   // Returns whether passive effects were flushed.
+  // 返回被动效果是否被刷新。
   // TODO: Combine this check with the one in flushPassiveEFfectsImpl. We should
   // probably just combine the two functions. I believe they were only separate
   // in the first place because we used to wrap it with
+  // 把这个检查与flushPassiveEFfectsImpl中的检查结合起来。
+  // 我们也许应该把这两个函数合并起来。我相信它们最初是分开的，因为我们曾经用
   // `Scheduler.runWithPriority`, which accepts a function. But now we track the
   // priority within React itself, so we can mutate the variable directly.
+  // `Scheduler.runWithPriority`，它接受一个函数。但现在我们在React本身中跟踪优先级，所以我们可以直接mutation变量。
   if (rootWithPendingPassiveEffects !== null) {
     const renderPriority = lanesToEventPriority(pendingPassiveEffectsLanes);
     const priority = lowerEventPriority(DefaultEventPriority, renderPriority);

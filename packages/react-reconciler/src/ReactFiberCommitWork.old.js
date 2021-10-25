@@ -2077,6 +2077,7 @@ function commitMutationEffects_begin(root: FiberRoot) {
     const fiber = nextEffect;
 
     // TODO: Should wrap this in flags check, too, as optimization
+    // 应该把这一点也包在标志检查中，作为优化。
     const deletions = fiber.deletions;
     if (deletions !== null) {
       for (let i = 0; i < deletions.length; i++) {
