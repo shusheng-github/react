@@ -500,6 +500,7 @@ function commitBeforeMutationEffectsDeletion(deletion: Fiber) {
   }
 }
 
+// 卸载hooks钩子
 function commitHookEffectListUnmount(
   flags: HookFlags,
   finishedWork: Fiber,
@@ -1443,14 +1444,20 @@ function getHostSibling(fiber: Fiber): ?Instance {
   // We're going to search forward into the tree until we find a sibling host
   // node. Unfortunately, if multiple insertions are done in a row we have to
   // search past them. This leads to exponential search for the next sibling.
+  // 我们要在树中向前搜索，直到找到一个同级别的host节点。
+  // 不幸的是，如果连续进行了多次插入，我们就必须搜索过去。这就导致了对下一个兄弟姐妹的指数式搜索。
+
   // TODO: Find a more efficient way to do this.
+  // TODO: 找到一个更有效的方法来做到这一点
   let node: Fiber = fiber;
   siblings: while (true) {
     // If we didn't find anything, let's try the next sibling.
+    // 如果我们没有发现什么，让我们试试下一个兄弟姐妹。
     while (node.sibling === null) {
       if (node.return === null || isHostParent(node.return)) {
         // If we pop out of the root or hit the parent the fiber we are the
         // last sibling.
+        // 如果我们从root跳出或打到parent的fiber上，我们就是 最后的兄弟姐妹。
         return null;
       }
       node = node.return;
@@ -1464,12 +1471,15 @@ function getHostSibling(fiber: Fiber): ?Instance {
     ) {
       // If it is not host node and, we might have a host node inside it.
       // Try to search down until we find one.
+      // 如果它不是host节点，我们可能在它里面有一个host节点。尝试向下搜索，直到我们找到一个。
       if (node.flags & Placement) {
         // If we don't have a child, try the siblings instead.
+        // 如果我们没有孩子，可以尝试用兄弟姐妹代替。
         continue siblings;
       }
       // If we don't have a child, try the siblings instead.
       // We also skip portals because they are not part of this host tree.
+      // 我们也可以跳过child，因为它们不是这个主机树的一部分。
       if (node.child === null || node.tag === HostPortal) {
         continue siblings;
       } else {
@@ -1478,6 +1488,7 @@ function getHostSibling(fiber: Fiber): ?Instance {
       }
     }
     // Check if this host node is stable or about to be placed.
+    // 检查这个host节点是否稳定或即将被安置。
     if (!(node.flags & Placement)) {
       // Found it!
       return node.stateNode;
@@ -1486,14 +1497,17 @@ function getHostSibling(fiber: Fiber): ?Instance {
 }
 
 function commitPlacement(finishedWork: Fiber): void {
+  // 如果不支持mutation则直接返回
   if (!supportsMutation) {
     return;
   }
 
   // Recursively insert all host nodes into the parent.
+  // 递归地将所有host节点插入父节点。
   const parentFiber = getHostParentFiber(finishedWork);
 
   // Note: these two variables *must* always be updated together.
+  // 注意：这两个变量*必须*总是一起更新。
   let parent;
   let isContainer;
   const parentStateNode = parentFiber.stateNode;
@@ -1520,14 +1534,18 @@ function commitPlacement(finishedWork: Fiber): void {
   }
   if (parentFiber.flags & ContentReset) {
     // Reset the text content of the parent before doing any insertions
+    // 在做任何插入之前，重置父类的文本内容
     resetTextContent(parent);
     // Clear ContentReset from the effect tag
+    // 清除效果标签中的ContentReset
     parentFiber.flags &= ~ContentReset;
   }
 
+  // 找到host类型的兄弟节点，插入兄弟节点
   const before = getHostSibling(finishedWork);
   // We only have the top Fiber that was inserted but we need to recurse down its
   // children to find all the terminal nodes.
+  // 我们只有被插入的顶部Fiber，但我们需要向下递归其 子节点来找到所有的终端节点。
   if (isContainer) {
     insertOrAppendPlacementNodeIntoContainer(finishedWork, before, parent);
   } else {
@@ -1584,6 +1602,8 @@ function insertOrAppendPlacementNode(
     // If the insertion itself is a portal, then we don't want to traverse
     // down its children. Instead, we'll get insertions from each child in
     // the portal directly.
+    // 如果插入本身是一个portal，那么我们就不想顺着它的子代进行追踪。
+    // 相反，我们将直接从portal中的每个子节点获得插入。
   } else {
     const child = node.child;
     if (child !== null) {
@@ -1758,6 +1778,12 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
         // layout hooks. (However, since we null out the `destroy` function
         // right before calling it, the behavior is already correct, so this
         // would mostly be for modeling purposes.)
+        // Layout effects在mutation阶段被销毁，因此所有fiber的所有销毁函数都在任何创建函数之前被调用。
+        // 这可以防止同级组件的效果相互干扰，
+        // 例如，在同一个提交过程中，一个组件的销毁函数不应该覆盖另一个组件的创建函数所设置的引用。
+        // TODO：检查我们是否在本次提交中消失的 "屏幕外 "子树内。
+        // 如果是的话，我们应该已经取消了它的布局钩子。
+        // (然而，由于我们在调用`destroy'函数前将其清空，所以行为已经正确了，所以这主要是为了建模的目的）。)
         if (
           enableProfilerTimer &&
           enableProfilerCommitHooks &&
@@ -1825,6 +1851,9 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
       // This prevents sibling component effects from interfering with each other,
       // e.g. a destroy function in one component should never override a ref set
       // by a create function in another component during the same commit.
+      // Layout effects在mutation阶段被销毁，因此所有纤维的所有销毁函数都在任何创建函数之前被调用。
+      // 这可以防止同级组件的效果相互干扰，
+      // 例如，一个组件的销毁函数不应该覆盖另一个组件的创建函数所设定的参考值。
       if (
         enableProfilerTimer &&
         enableProfilerCommitHooks &&
@@ -1856,13 +1885,17 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
       const instance: Instance = finishedWork.stateNode;
       if (instance != null) {
         // Commit the work prepared earlier.
+        // 提交先前准备的工作。
         const newProps = finishedWork.memoizedProps;
         // For hydration we reuse the update path but we treat the oldProps
         // as the newProps. The updatePayload will contain the real change in
         // this case.
+        // 对于水合，我们重新使用更新路径，但我们把旧的Props当作新的Props。
+        // 在这种情况下，updatePayload将包含真正的变化。
         const oldProps = current !== null ? current.memoizedProps : newProps;
         const type = finishedWork.type;
         // TODO: Type the updateQueue to be specific to host components.
+        // TODO：将updateQueue的类型具体到host组件。
         const updatePayload: null | UpdatePayload = (finishedWork.updateQueue: any);
         finishedWork.updateQueue = null;
         if (updatePayload !== null) {
@@ -2120,6 +2153,8 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
   // switching on the type of work before checking the flags. That's what
   // we do in all the other phases. I think this one is only different
   // because of the shared reconcilation logic below.
+  // TODO: 这个阶段的因数可能可以改进。考虑在检查标志之前切换到工作类型上。
+  // 这就是我们在所有其他阶段所做的。我认为这个阶段之所以不同，只是因为下面的共享调和逻辑。
   const flags = finishedWork.flags;
 
   if (flags & ContentReset) {
@@ -2134,6 +2169,7 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
     if (enableScopeAPI) {
       // TODO: This is a temporary solution that allowed us to transition away
       // from React Flare on www.
+      // TODO: 这是一个临时解决方案，允许我们从React Flare过渡到www上。
       if (finishedWork.tag === ScopeComponent) {
         commitAttachRef(finishedWork);
       }
@@ -2196,14 +2232,19 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
   // updates, and deletions. To avoid needing to add a case for every possible
   // bitmap value, we remove the secondary effects from the effect tag and
   // switch on that value.
+  // 下面的switch语句只关心放置(插入)、更新和删除的问题。
+  // 为了避免需要为每一个可能的位图值添加一个案例，我们从效果标签中移除二级效果，并在该值上进行切换。
   const primaryFlags = flags & (Placement | Update | Hydrating);
   outer: switch (primaryFlags) {
     case Placement: {
       commitPlacement(finishedWork);
       // Clear the "placement" from effect tag so that we know that this is
       // inserted, before any life-cycles like componentDidMount gets called.
+      // 清除效果标签中的 "placement"，这样我们就能知道这个标签已经插入了。
+      // 插入了，在任何生命周期如componentDidMount被调用之前。
       // TODO: findDOMNode doesn't rely on this any more but isMounted does
       // and isMounted is deprecated anyway so we should be able to kill this.
+      // TODO：findDOMNode不再依赖于此，但isMounted依赖于此，而且isMounted已被弃用，所以我们应该能够杀死它。
       finishedWork.flags &= ~Placement;
       break;
     }
