@@ -306,7 +306,7 @@ export function commitBeforeMutationEffects(
   commitBeforeMutationEffects_begin();
 
   // We no longer need to track the active instance fiber
-  //  我们不再需要跟踪活动实例的fiber
+  //  我们不再需要跟踪active实例的fiber
   const shouldFire = shouldFireAfterActiveInstanceBlur;
   shouldFireAfterActiveInstanceBlur = false;
   focusedInstanceHandle = null;
@@ -501,6 +501,7 @@ function commitBeforeMutationEffectsDeletion(deletion: Fiber) {
 }
 
 // 卸载hooks钩子
+// 该方法会遍历effectList，执行所有useLayoutEffect hook的销毁函数。
 function commitHookEffectListUnmount(
   flags: HookFlags,
   finishedWork: Fiber,
@@ -1496,6 +1497,7 @@ function getHostSibling(fiber: Fiber): ?Instance {
   }
 }
 
+// 当Fiber节点含有Placement effectTag，意味着该Fiber节点对应的DOM节点需要插入到页面中。
 function commitPlacement(finishedWork: Fiber): void {
   // 如果不支持mutation则直接返回
   if (!supportsMutation) {
@@ -1510,6 +1512,7 @@ function commitPlacement(finishedWork: Fiber): void {
   // 注意：这两个变量*必须*总是一起更新。
   let parent;
   let isContainer;
+  // 父级DOM节点
   const parentStateNode = parentFiber.stateNode;
   switch (parentFiber.tag) {
     case HostComponent:
@@ -1546,6 +1549,13 @@ function commitPlacement(finishedWork: Fiber): void {
   // We only have the top Fiber that was inserted but we need to recurse down its
   // children to find all the terminal nodes.
   // 我们只有被插入的顶部Fiber，但我们需要向下递归其 子节点来找到所有的终端节点。
+  // 获取Fiber节点的DOM兄弟节点
+  // 值得注意的是，getHostSibling（获取兄弟DOM节点）的执行很耗时，当在同一个父Fiber节点下依次执行多个插入操作，getHostSibling算法的复杂度为指数级。
+  // 这是由于Fiber节点不只包括HostComponent，所以Fiber树和渲染的DOM树节点并不是一一对应的。要从Fiber节点找到DOM节点很可能跨层级遍历。
+  const before = getHostSibling(finishedWork);
+  // We only have the top Fiber that was inserted but we need to recurse down its
+  // children to find all the terminal nodes.
+  // parentStateNode是否是rootFiber
   if (isContainer) {
     insertOrAppendPlacementNodeIntoContainer(finishedWork, before, parent);
   } else {
@@ -1861,6 +1871,7 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
       ) {
         try {
           startLayoutEffectTimer();
+          // 该方法会遍历effectList，执行所有useLayoutEffect hook的销毁函数。
           commitHookEffectListUnmount(
             HookLayout | HookHasEffect,
             finishedWork,
@@ -2097,6 +2108,7 @@ export function commitMutationEffects(
 }
 
 function commitMutationEffects_begin(root: FiberRoot) {
+  // 遍历effectList
   while (nextEffect !== null) {
     const fiber = nextEffect;
 
@@ -2157,10 +2169,12 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
   // 这就是我们在所有其他阶段所做的。我认为这个阶段之所以不同，只是因为下面的共享调和逻辑。
   const flags = finishedWork.flags;
 
+  // 根据 ContentReset effectTag重置文字节点
   if (flags & ContentReset) {
     commitResetTextContent(finishedWork);
   }
 
+  // 更新ref
   if (flags & Ref) {
     const current = finishedWork.alternate;
     if (current !== null) {
@@ -2234,8 +2248,10 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
   // switch on that value.
   // 下面的switch语句只关心放置(插入)、更新和删除的问题。
   // 为了避免需要为每一个可能的位图值添加一个案例，我们从效果标签中移除二级效果，并在该值上进行切换。
+  // 根据 effectTag 分别处理
   const primaryFlags = flags & (Placement | Update | Hydrating);
   outer: switch (primaryFlags) {
+    // 插入dom
     case Placement: {
       commitPlacement(finishedWork);
       // Clear the "placement" from effect tag so that we know that this is
@@ -2248,6 +2264,7 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
       finishedWork.flags &= ~Placement;
       break;
     }
+    // 插入DOM 并 更新DOM
     case PlacementAndUpdate: {
       // Placement
       commitPlacement(finishedWork);
@@ -2260,6 +2277,7 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
       commitWork(current, finishedWork);
       break;
     }
+    // SSR
     case Hydrating: {
       finishedWork.flags &= ~Hydrating;
       break;
@@ -2272,6 +2290,7 @@ function commitMutationEffectsOnFiber(finishedWork: Fiber, root: FiberRoot) {
       commitWork(current, finishedWork);
       break;
     }
+    // 更新dom
     case Update: {
       const current = finishedWork.alternate;
       commitWork(current, finishedWork);
@@ -2306,6 +2325,7 @@ function commitLayoutEffects_begin(
   // Suspense layout effects semantics don't change for legacy roots.
   const isModernRoot = (subtreeRoot.mode & ConcurrentMode) !== NoMode;
 
+  // 循环遍历effectList
   while (nextEffect !== null) {
     const fiber = nextEffect;
     const firstChild = fiber.child;
