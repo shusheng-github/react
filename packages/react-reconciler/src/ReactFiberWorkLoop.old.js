@@ -1820,7 +1820,7 @@ function commitRootImpl(root, renderPriorityLevel) {
   if (subtreeHasEffects || rootHasEffect) {
     const prevTransition = ReactCurrentBatchConfig.transition;
     ReactCurrentBatchConfig.transition = 0;
-    // // 保存之前的优先级，以同步优先级执行，执行完毕后恢复之前优先级
+    // 保存之前的优先级，以同步优先级执行，执行完毕后恢复之前优先级
     const previousPriority = getCurrentUpdatePriority();
     setCurrentUpdatePriority(DiscreteEventPriority);
 
@@ -1829,6 +1829,7 @@ function commitRootImpl(root, renderPriorityLevel) {
     executionContext |= CommitContext;
 
     // Reset this to null before calling lifecycles
+    // 在调用生命周期之前，将其重置为空
     ReactCurrentOwner.current = null;
 
     // The commit phase is broken into several sub-phases. We do a separate pass
@@ -1841,6 +1842,7 @@ function commitRootImpl(root, renderPriorityLevel) {
 
     // TODO: commitBeforeMutationEffects
     // before mutation阶段（执行DOM操作前）
+    // commitBeforeMutationEffects 返回一个布尔值
     const shouldFireAfterActiveInstanceBlur = commitBeforeMutationEffects(
       root,
       finishedWork,
@@ -1875,6 +1877,7 @@ function commitRootImpl(root, renderPriorityLevel) {
     // the mutation phase, so that the previous tree is still current during
     // componentWillUnmount, but before the layout phase, so that the finished
     // work is current during componentDidMount/Update.
+    // 切换fiberRootNode指向的current Fiber树。
     root.current = finishedWork;
 
     // The next phase is the layout phase, where we call effects that read
@@ -1927,9 +1930,12 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   const rootDidHavePassiveEffects = rootDoesHavePassiveEffects;
 
+  // useEffect相关
+  // 会根据rootDoesHavePassiveEffects === true?决定是否赋值rootWithPendingPassiveEffects。
   if (rootDoesHavePassiveEffects) {
     // This commit has passive effects. Stash a reference to them. But don't
     // schedule a callback until after flushing layout work.
+    // 这个提交有被动效果。藏起对它们的参考。但在冲刷布局工作之后，不要安排回调。
     rootDoesHavePassiveEffects = false;
     rootWithPendingPassiveEffects = root;
     pendingPassiveEffectsLanes = lanes;
