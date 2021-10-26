@@ -646,6 +646,8 @@ function commitLayoutEffectOnFiber(
           // This is done to prevent sibling component effects from interfering with each other,
           // e.g. a destroy function in one component should never override a ref set
           // by a create function in another component during the same commit.
+          // 在这一点上，布局效应已经被破坏了（在mutation阶段）。这样做是为了防止同级组件的效果相互干扰，
+          // 例如，一个组件的destroy函数不应该覆盖另一个组件的ref set 被另一个组件的创建函数所设置的引用。
           if (
             enableProfilerTimer &&
             enableProfilerCommitHooks &&
@@ -653,6 +655,7 @@ function commitLayoutEffectOnFiber(
           ) {
             try {
               startLayoutEffectTimer();
+              // 执行useLayoutEffect的回调函数
               commitHookEffectListMount(
                 HookLayout | HookHasEffect,
                 finishedWork,
@@ -708,6 +711,7 @@ function commitLayoutEffectOnFiber(
               ) {
                 try {
                   startLayoutEffectTimer();
+                  // 执行componentDidMount钩子
                   instance.componentDidMount();
                 } finally {
                   recordLayoutEffectDuration(finishedWork);
@@ -761,6 +765,7 @@ function commitLayoutEffectOnFiber(
               ) {
                 try {
                   startLayoutEffectTimer();
+                  // 执行 componentDidUpdate钩子
                   instance.componentDidUpdate(
                     prevProps,
                     prevState,
@@ -849,6 +854,8 @@ function commitLayoutEffectOnFiber(
         // (eg DOM renderer may schedule auto-focus for inputs and form controls).
         // These effects should only be committed when components are first mounted,
         // aka when there is no current/alternate.
+        // 渲染器可以将工作安排在主机组件安装后进行（例如DOM渲染器可以安排输入和表单控件的自动聚焦）。
+        // 这些效果应该只在组件第一次被挂载时提交，也就是在没有当前/备用组件时。
         if (current === null && finishedWork.flags & Update) {
           const type = finishedWork.type;
           const props = finishedWork.memoizedProps;
@@ -951,6 +958,7 @@ function commitLayoutEffectOnFiber(
     if (enableScopeAPI) {
       // TODO: This is a temporary solution that allowed us to transition away
       // from React Flare on www.
+      // 这是一个临时解决方案，使我们能够过渡到离开 的React Flare。
       if (finishedWork.flags & Ref && finishedWork.tag !== ScopeComponent) {
         commitAttachRef(finishedWork);
       }
@@ -1071,7 +1079,11 @@ function hideOrUnhideAllChildren(finishedWork, isHidden) {
 function commitAttachRef(finishedWork: Fiber) {
   const ref = finishedWork.ref;
   if (ref !== null) {
+
+    // 获取DOM实例
     const instance = finishedWork.stateNode;
+    
+    // dom实例赋值
     let instanceToUse;
     switch (finishedWork.tag) {
       case HostComponent: //元素节点 获取元素
@@ -1081,10 +1093,12 @@ function commitAttachRef(finishedWork: Fiber) {
         instanceToUse = instance;
     }
     // Moved outside to ensure DCE works with this flag
+    // 移到了外面，以确保DCE与这个标志一起工作。
     if (enableScopeAPI && finishedWork.tag === ScopeComponent) {
       instanceToUse = instance;
     }
     if (typeof ref === 'function') {
+      // 如果ref是函数形式，调用回调函数
       if (
         enableProfilerTimer &&
         enableProfilerCommitHooks &&
@@ -1110,6 +1124,7 @@ function commitAttachRef(finishedWork: Fiber) {
         }
       }
 
+      // 如果ref是ref实例形式，赋值ref.current
       ref.current = instanceToUse;
     }
   }
@@ -2279,6 +2294,7 @@ function commitLayoutEffects_begin(
   committedLanes: Lanes,
 ) {
   // Suspense layout effects semantics don't change for legacy roots.
+  // Suspense layout effects的语义不会因为传统的根基而改变。
   const isModernRoot = (subtreeRoot.mode & ConcurrentMode) !== NoMode;
 
   // 循环遍历effectList
@@ -2292,14 +2308,17 @@ function commitLayoutEffects_begin(
       isModernRoot
     ) {
       // Keep track of the current Offscreen stack's state.
+      // 追踪当前非屏幕堆栈的状态。
       const isHidden = fiber.memoizedState !== null;
       const newOffscreenSubtreeIsHidden = isHidden || offscreenSubtreeIsHidden;
       if (newOffscreenSubtreeIsHidden) {
         // The Offscreen tree is hidden. Skip over its layout effects.
+        // 屏幕外的树被隐藏了。跳过它的布局效果。
         commitLayoutMountEffects_complete(subtreeRoot, root, committedLanes);
         continue;
       } else {
         // TODO (Offscreen) Also check: subtreeFlags & LayoutMask
+        // TODO (Offscreen) 同时检查： subtreeFlags & LayoutMask
         const current = fiber.alternate;
         const wasHidden = current !== null && current.memoizedState !== null;
         const newOffscreenSubtreeWasHidden =
