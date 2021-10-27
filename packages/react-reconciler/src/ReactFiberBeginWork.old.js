@@ -294,6 +294,7 @@ export function reconcileChildren(
     // If we had any progressed work already, that is invalid at this point so
     // let's throw it out.
     // 如果我们已经有任何进展的工作，那在这一点上是无效的，所以让我们把它扔掉。
+    // diff算法的开始
     workInProgress.child = reconcileChildFibers(
       workInProgress,
       current.child,
