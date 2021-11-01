@@ -799,6 +799,8 @@ function ChildReconciler(shouldTrackSideEffects) {
         // unfortunate because it triggers the slow path all the time. We need
         // a better way to communicate whether this was a miss or null,
         // boolean, undefined, etc.
+        // 这在空的插槽上会被打破，比如空的孩子。这很不幸，因为它一直在触发慢速路径。
+        // 我们需要一个更好的方法来传达这是一个失误还是空，布尔值，未定义，等等。
         if (oldFiber === null) {
           oldFiber = nextOldFiber;
         }
@@ -808,6 +810,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         if (oldFiber && newFiber.alternate === null) {
           // We matched the slot, but we didn't reuse the existing fiber, so we
           // need to delete the existing child.
+          // 我们匹配了slot，但我们没有重复使用现有的fiber，所以我们需要删除现有的child。
           deleteChild(returnFiber, oldFiber);
         }
       }
@@ -821,6 +824,8 @@ function ChildReconciler(shouldTrackSideEffects) {
         // I.e. if we had null values before, then we want to defer this
         // for each null value. However, we also don't want to call updateSlot
         // with the previous one.
+        // 如果我们不在这个slot的正确索引上，就推迟兄弟姐妹。
+        // 也就是说，如果我们之前有空值，那么我们要为每个空值推迟这个。然而，我们也不希望用前一个slot调用updateSlot。
         previousNewFiber.sibling = newFiber;
       }
       previousNewFiber = newFiber;
