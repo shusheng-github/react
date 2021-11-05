@@ -326,6 +326,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       // Noop.
       return lastPlacedIndex;
     }
+    // newFiber中有alternate说明可以复用
     const current = newFiber.alternate;
     if (current !== null) {
       const oldIndex = current.index;
