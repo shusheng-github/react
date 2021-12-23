@@ -304,6 +304,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     return existingChildren;
   }
 
+  // // 创建workInProgress
   function useFiber(fiber: Fiber, pendingProps: mixed): Fiber {
     // We currently set sibling to null and index to 0 here because it is easy
     // to forget to do before returning it. E.g. for the single child case.
@@ -326,6 +327,7 @@ function ChildReconciler(shouldTrackSideEffects) {
       // Noop.
       return lastPlacedIndex;
     }
+    // newFiber中有alternate说明可以复用
     const current = newFiber.alternate;
     if (current !== null) {
       const oldIndex = current.index;
@@ -804,6 +806,8 @@ function ChildReconciler(shouldTrackSideEffects) {
         // unfortunate because it triggers the slow path all the time. We need
         // a better way to communicate whether this was a miss or null,
         // boolean, undefined, etc.
+        // 这在空的插槽上会被打破，比如空的孩子。这很不幸，因为它一直在触发慢速路径。
+        // 我们需要一个更好的方法来传达这是一个失误还是空，布尔值，未定义，等等。
         if (oldFiber === null) {
           oldFiber = nextOldFiber;
         }
@@ -813,6 +817,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         if (oldFiber && newFiber.alternate === null) {
           // We matched the slot, but we didn't reuse the existing fiber, so we
           // need to delete the existing child.
+          // 我们匹配了slot，但我们没有重复使用现有的fiber，所以我们需要删除现有的child。
           deleteChild(returnFiber, oldFiber);
         }
       }
@@ -826,6 +831,8 @@ function ChildReconciler(shouldTrackSideEffects) {
         // I.e. if we had null values before, then we want to defer this
         // for each null value. However, we also don't want to call updateSlot
         // with the previous one.
+        // 如果我们不在这个slot的正确索引上，就推迟兄弟姐妹。
+        // 也就是说，如果我们之前有空值，那么我们要为每个空值推迟这个。然而，我们也不希望用前一个slot调用updateSlot。
         previousNewFiber.sibling = newFiber;
       }
       previousNewFiber = newFiber;
@@ -1132,10 +1139,14 @@ function ChildReconciler(shouldTrackSideEffects) {
   ): Fiber {
     const key = element.key;
     let child = currentFirstChild;
+    // 首先判断是否存在对应DOM节点
     while (child !== null) {
+      // 上一次更新存在DOM节点，接下来判断是否可复用
       // TODO: If key === null and child.key === null, then this only applies to
       // the first item in the list.（那么这只适用于列表中的第一项。）
+      // 首先比较key是否相同
       if (child.key === key) {
+        // key相同，接下来比较type是否相同
         const elementType = element.type;
         if (elementType === REACT_FRAGMENT_TYPE) {
           if (child.tag === Fragment) {
@@ -1149,6 +1160,8 @@ function ChildReconciler(shouldTrackSideEffects) {
             return existing;
           }
         } else {
+          // type相同则表示可以复用
+          // 返回复用的fiber
           if (
             child.elementType === elementType ||
             // Keep this check inline so it only runs on the false path:
@@ -1178,14 +1191,18 @@ function ChildReconciler(shouldTrackSideEffects) {
         }
         // Didn't match.
         // 不匹配删除child
+        // 代码执行到这里代表：key相同但是type不同
+        // 将该fiber及其兄弟fiber标记为删除 
         deleteRemainingChildren(returnFiber, child);
         break;
       } else {
+        // key不同，将该fiber标记为删除
         deleteChild(returnFiber, child);
       }
       child = child.sibling;
     }
 
+    // 创建新Fiber，并返回
     if (element.type === REACT_FRAGMENT_TYPE) {
       const created = createFiberFromFragment(
         element.props.children,
