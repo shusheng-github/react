@@ -10,6 +10,7 @@
 export type PriorityLevel = 0 | 1 | 2 | 3 | 4 | 5;
 
 // TODO: Use symbols?
+// 初始化时候的无优先级
 export const NoPriority = 0;
 // 立即执行的优先级，级别最高
 export const ImmediatePriority = 1;
