@@ -71,6 +71,8 @@ Component.prototype.setState = function(partialState, callback) {
     'setState(...): takes an object of state variables to update or a ' +
       'function which returns an object of state variables.',
   );
+  // setState内部调用enqueueSetState方法
+  // packages/react-reconciler/src/ReactFiberClassComponent.old.js
   this.updater.enqueueSetState(this, partialState, callback, 'setState');
 };
 

@@ -144,9 +144,17 @@ function warnIfStringRefCannotBeAutoConverted(config) {
  * indicating filename, line number, and/or other information.
  * @internal
  */
+// ReactElement只是一个用来承载信息的容器，他会告诉后续的操作这个节点的以下信息：
+
+// type类型，用于判断如何创建节点
+// key和ref这些特殊信息
+// props新的属性内容
+// $$typeof用于确定是否属于ReactElement
 const ReactElement = function(type, key, ref, self, source, owner, props) {
   const element = {
     // This tag allows us to uniquely identify this as a React Element
+    // 这个标签使我们能够唯一地将其识别为一个React元素
+    // 识别出是否属于React元素
     $$typeof: REACT_ELEMENT_TYPE,
 
     // Built-in properties that belong on the element
@@ -156,6 +164,7 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
     props: props,
 
     // Record the component responsible for creating this element.
+    // 记录负责创建这个元素的组件。
     _owner: owner,
   };
 
@@ -388,6 +397,7 @@ export function createElement(type, config, children) {
   // the newly allocated props object.
   // Children 可以是多个参数，并且这些参数会转移到新分配的 props 对象上。
   const childrenLength = arguments.length - 2;
+  // childrenLength的长度等于是单节点，大于1是多节点数组元素
   if (childrenLength === 1) {
     props.children = children;
   } else if (childrenLength > 1) {

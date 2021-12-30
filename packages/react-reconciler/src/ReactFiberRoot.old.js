@@ -102,6 +102,7 @@ export function createFiberRoot(
   isStrictMode: boolean,
   concurrentUpdatesByDefaultOverride: null | boolean,
 ): FiberRoot {
+  // 创建fiberRootNode
   const root: FiberRoot = (new FiberRootNode(containerInfo, tag, hydrate): any);
   if (enableSuspenseCallback) {
     root.hydrationCallbacks = hydrationCallbacks;
@@ -116,6 +117,7 @@ export function createFiberRoot(
     isStrictMode,
     concurrentUpdatesByDefaultOverride,
   );
+  // 连接rootFiber与fiberRootNode
   root.current = uninitializedFiber;
   uninitializedFiber.stateNode = root;
 
@@ -133,7 +135,8 @@ export function createFiberRoot(
     };
     uninitializedFiber.memoizedState = initialState;
   }
-
+  
+   // 初始化updateQueue
   initializeUpdateQueue(uninitializedFiber);
 
   return root;

@@ -402,6 +402,10 @@ export function renderWithHooks<Props, SecondArg>(
       ReactCurrentDispatcher.current = HooksDispatcherOnMountInDEV;
     }
   } else {
+    // 在FunctionComponent render前，会根据FunctionComponent对应fiber的以下条件区分mount与update。
+    // 并将不同情况对应的dispatcher赋值给全局变量ReactCurrentDispatcher的current属性。
+    // 在FunctionComponent render时，会从ReactCurrentDispatcher.current（即当前dispatcher）中寻找需要的hook。
+    // 不同的调用栈上下文为ReactCurrentDispatcher.current赋值不同的dispatcher，则FunctionComponent render时调用的hook也是不同的函数。
     ReactCurrentDispatcher.current =
       current === null || current.memoizedState === null
         ? HooksDispatcherOnMount
@@ -708,11 +712,15 @@ function mountReducer<S, I, A>(
   }
   hook.memoizedState = hook.baseState = initialState;
   const queue = (hook.queue = {
+    // 保存update对象
     pending: null,
     interleaved: null,
     lanes: NoLanes,
+    // 保存dispatchAction.bind()的值
     dispatch: null,
+    // 上一次render时使用的reducer
     lastRenderedReducer: reducer,
+    // 上一次render时的state
     lastRenderedState: (initialState: any),
   });
   const dispatch: Dispatch<A> = (queue.dispatch = (dispatchAction.bind(
@@ -723,11 +731,13 @@ function mountReducer<S, I, A>(
   return [hook.memoizedState, dispatch];
 }
 
+// 找到对应的hook，根据update计算该hook的新state并返回。
 function updateReducer<S, I, A>(
   reducer: (S, A) => S,
   initialArg: I,
   init?: I => S,
 ): [S, Dispatch<A>] {
+  // 获取当前hook
   const hook = updateWorkInProgressHook();
   const queue = hook.queue;
   invariant(
@@ -1258,11 +1268,15 @@ function mountState<S>(
   }
   hook.memoizedState = hook.baseState = initialState;
   const queue = (hook.queue = {
+    // 保存update对象
     pending: null,
     interleaved: null,
     lanes: NoLanes,
+    // 保存dispatchAction.bind()的值
     dispatch: null,
+    // 上一次render时使用的reducer
     lastRenderedReducer: basicStateReducer,
+     // 上一次render时的state
     lastRenderedState: (initialState: any),
   });
   const dispatch: Dispatch<
@@ -1332,6 +1346,7 @@ function getCallerStackFrame(): string {
 }
 
 function mountRef<T>(initialValue: T): {|current: T|} {
+  // 获取当前useRef hook
   const hook = mountWorkInProgressHook();
   if (enableUseRefAccessWarning) {
     if (__DEV__) {
@@ -1392,6 +1407,7 @@ function mountRef<T>(initialValue: T): {|current: T|} {
       hook.memoizedState = ref;
       return ref;
     } else {
+      // 创建ref
       const ref = {current: initialValue};
       hook.memoizedState = ref;
       return ref;
@@ -1404,7 +1420,9 @@ function mountRef<T>(initialValue: T): {|current: T|} {
 }
 
 function updateRef<T>(initialValue: T): {|current: T|} {
+  // 获取当前useRef hook
   const hook = updateWorkInProgressHook();
+  // 返回保存的数据
   return hook.memoizedState;
 }
 
@@ -1905,6 +1923,8 @@ function refreshCache<T>(fiber: Fiber, seedKey: ?() => T, seedValue: T) {
   // TODO: Warn if unmounted?
 }
 
+// 调用阶段会执行dispatchAction
+// 创建update，将update加入queue.pending中，并开启调度。
 function dispatchAction<S, A>(
   fiber: Fiber,
   queue: UpdateQueue<S, A>,
@@ -1933,10 +1953,14 @@ function dispatchAction<S, A>(
   };
 
   const alternate = fiber.alternate;
+  // currentlyRenderingFiber即workInProgress，workInProgress存在代表当前处于render阶段
+  // 触发更新时通过bind预先保存的fiber与workInProgress全等，代表本次更新发生于FunctionComponent对应fiber的render阶段。
+  // 所以这是一个render阶段触发的更新，需要标记变量didScheduleRenderPhaseUpdate，后续单独处理。
   if (
     fiber === currentlyRenderingFiber ||
     (alternate !== null && alternate === currentlyRenderingFiber)
   ) {
+    // render阶段触发的更新
     // This is a render phase update. Stash it in a lazily-created map of
     // queue -> linked list of updates. After this render pass, we'll restart
     // and apply the stashed updates on top of the work-in-progress hook.
@@ -1979,6 +2003,8 @@ function dispatchAction<S, A>(
       queue.pending = update;
     }
 
+    // fiber.lanes保存fiber上存在的update的优先级。
+    // fiber.lanes === NoLanes意味着fiber上不存在update。
     if (
       fiber.lanes === NoLanes &&
       (alternate === null || alternate.lanes === NoLanes)
@@ -2099,6 +2125,7 @@ if (enableCache) {
   (ContextOnlyDispatcher: Dispatcher).useCacheRefresh = throwInvalidHookError;
 }
 
+// mount时的Dispatcher
 const HooksDispatcherOnMount: Dispatcher = {
   readContext,
 
@@ -2124,6 +2151,7 @@ if (enableCache) {
   (HooksDispatcherOnMount: Dispatcher).useCacheRefresh = mountRefresh;
 }
 
+// update时的Dispatcher
 const HooksDispatcherOnUpdate: Dispatcher = {
   readContext,
 

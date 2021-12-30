@@ -444,6 +444,7 @@ function requestRetryLane(fiber: Fiber) {
   return claimNextRetryLane();
 }
 
+// 开始调度
 export function scheduleUpdateOnFiber(
   fiber: Fiber,
   lane: Lane,
@@ -465,6 +466,7 @@ export function scheduleUpdateOnFiber(
   }
 
   // Mark that the root has a pending update.
+  // 标明根部有一个待更新。
   markRootUpdated(root, lane, eventTime);
 
   if (enableProfilerTimer && enableProfilerNestedUpdateScheduledHook) {
@@ -488,12 +490,16 @@ export function scheduleUpdateOnFiber(
   }
 
   // TODO: Consolidate with `isInterleavedUpdate` check
+  // 与 "isInterleavedUpdate "检查合并
   if (root === workInProgressRoot) {
     // Received an update to a tree that's in the middle of rendering. Mark
     // that there was an interleaved update work on this root. Unless the
     // `deferRenderPhaseUpdateToNextBatch` flag is off and this is a render
     // phase update. In that case, we don't treat render phase updates as if
     // they were interleaved, for backwards compat reasons.
+    // 收到了一棵正在渲染中的树的最新情况。标明在这个根上有一个交错的更新工作。
+    // 除非`deferRenderPhaseUpdateToNextBatch`标志被关闭，并且这是一个渲染阶段的更新。
+    // 在这种情况下，出于向后兼容的考虑，我们不会把渲染阶段的更新当作交错的更新来处理。
     if (
       deferRenderPhaseUpdateToNextBatch ||
       (executionContext & RenderContext) === NoContext
@@ -510,6 +516,10 @@ export function scheduleUpdateOnFiber(
       // effect of interrupting the current render and switching to the update.
       // TODO: Make sure this doesn't override pings that happen while we've
       // already started rendering.
+      // 根部已经暂停，有延迟，这意味着这个渲染肯定不会完成。
+      // 由于我们有一个新的更新，让我们现在把它标记为暂停，就在标记即将到来的更新之前。
+      // 这样做的效果是，中断当前的渲染，并切换到更新上。
+      //  TODO: 确保这不会覆盖在我们已经开始渲染时发生的平移。已经开始渲染的时候发生的ping。
       markRootSuspended(root, workInProgressRootRenderLanes);
     }
   }

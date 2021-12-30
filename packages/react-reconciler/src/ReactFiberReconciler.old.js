@@ -237,6 +237,7 @@ function findHostInstanceWithWarning(
   return findHostInstance(component);
 }
 
+// 完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueu
 export function createContainer(
   containerInfo: Container,
   tag: RootTag,
@@ -255,6 +256,7 @@ export function createContainer(
   );
 }
 
+// 创建update
 export function updateContainer(
   element: ReactNodeList,
   container: OpaqueRoot,
@@ -296,11 +298,15 @@ export function updateContainer(
     }
   }
 
+   // 创建update
   const update = createUpdate(eventTime, lane);
   // Caution: React DevTools currently depends on this property
   // being called "element".
+  // update.payload为需要挂载在根节点的组件
+  // 对于HostRoot，payload为ReactDOM.render的第一个传参。
   update.payload = {element};
 
+  // callback为ReactDOM.render的第三个参数 —— 回调函数
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     if (__DEV__) {
@@ -315,7 +321,9 @@ export function updateContainer(
     update.callback = callback;
   }
 
+  // 将生成的update加入updateQueue
   enqueueUpdate(current, update, lane);
+  // 调度更新
   const root = scheduleUpdateOnFiber(current, lane, eventTime);
   if (root !== null) {
     entangleTransitions(root, current, lane);

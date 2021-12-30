@@ -103,11 +103,13 @@ function getReactRootElementInContainer(container: any) {
   }
 }
 
+// legacyCreateRootFromDOMContainer方法内部会调用createFiberRoot方法完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueue。
 function legacyCreateRootFromDOMContainer(
   container: Container,
   forceHydrate: boolean,
 ): FiberRoot {
   // First clear any existing content.
+  // 首先清除任何现有的内容。
   if (!forceHydrate) {
     let rootSibling;
     while ((rootSibling = container.lastChild)) {
@@ -115,6 +117,7 @@ function legacyCreateRootFromDOMContainer(
     }
   }
 
+  // 完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueue
   const root = createContainer(
     container,
     LegacyRoot,
@@ -123,6 +126,7 @@ function legacyCreateRootFromDOMContainer(
     false, // isStrictMode
     false, // concurrentUpdatesByDefaultOverride,
   );
+  // 标记容器为根
   markContainerAsRoot(root.current, container);
 
   const rootContainerElement =
@@ -161,11 +165,13 @@ function legacyRenderSubtreeIntoContainer(
   let fiberRoot: FiberRoot;
   if (!root) {
     // Initial mount
+    // 初始安装
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
       container,
       forceHydrate,
     );
     fiberRoot = root;
+    // 判断是否有回调函数，有回调函数的话，初始化回调函数
     if (typeof callback === 'function') {
       const originalCallback = callback;
       callback = function() {
@@ -174,6 +180,8 @@ function legacyRenderSubtreeIntoContainer(
       };
     }
     // Initial mount should not be batched.
+    // 初始装载不进行批处理
+    // 如果已经在渲染中，在没有警告的情况下冲刷同步
     flushSyncWithoutWarningIfAlreadyRendering(() => {
       updateContainer(children, fiberRoot, parentComponent, callback);
     });

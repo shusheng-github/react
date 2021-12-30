@@ -204,12 +204,19 @@ function applyDerivedStateFromProps(
 const classComponentUpdater = {
   isMounted,
   enqueueSetState(inst, payload, callback) {
+    // inst是this上下文
+    // 通过组件实例获取对应fiber
     const fiber = getInstance(inst);
     const eventTime = requestEventTime();
+
+    // 获取优先级
     const lane = requestUpdateLane(fiber);
 
+    // 创建update
     const update = createUpdate(eventTime, lane);
+    // 对于ClassComponent，update.payload为this.setState的第一个传参（即要改变的state）
     update.payload = payload;
+    // 赋值回调函数
     if (callback !== undefined && callback !== null) {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'setState');
@@ -217,7 +224,9 @@ const classComponentUpdater = {
       update.callback = callback;
     }
 
+     // 将update插入updateQueue
     enqueueUpdate(fiber, update, lane);
+     // 调度update
     const root = scheduleUpdateOnFiber(fiber, lane, eventTime);
     if (root !== null) {
       entangleTransitions(root, fiber, lane);
@@ -277,6 +286,7 @@ const classComponentUpdater = {
     const lane = requestUpdateLane(fiber);
 
     const update = createUpdate(eventTime, lane);
+    // 赋值tag为ForceUpdate
     update.tag = ForceUpdate;
 
     if (callback !== undefined && callback !== null) {

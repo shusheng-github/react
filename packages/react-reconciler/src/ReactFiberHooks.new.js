@@ -695,6 +695,7 @@ function mountReducer<S, I, A>(
   initialArg: I,
   init?: I => S,
 ): [S, Dispatch<A>] {
+  // 创建并返回当前的hook
   const hook = mountWorkInProgressHook();
   let initialState;
   if (init !== undefined) {
@@ -702,15 +703,22 @@ function mountReducer<S, I, A>(
   } else {
     initialState = ((initialArg: any): S);
   }
+  // ...赋值初始state
   hook.memoizedState = hook.baseState = initialState;
+   // 创建queue
   const queue = (hook.queue = {
+    // 保存update对象
     pending: null,
     interleaved: null,
     lanes: NoLanes,
+    // 保存dispatchAction.bind()的值
     dispatch: null,
+    // 上一次render时使用的reducer
     lastRenderedReducer: reducer,
+      // 上一次render时的state
     lastRenderedState: (initialState: any),
   });
+   // ...创建dispatch
   const dispatch: Dispatch<A> = (queue.dispatch = (dispatchAction.bind(
     null,
     currentlyRenderingFiber,
@@ -1247,12 +1255,16 @@ function updateMutableSource<Source, Snapshot>(
 function mountState<S>(
   initialState: (() => S) | S,
 ): [S, Dispatch<BasicStateAction<S>>] {
+  // 创建并返回当前的hook
   const hook = mountWorkInProgressHook();
+
   if (typeof initialState === 'function') {
     // $FlowFixMe: Flow doesn't like mixed types
     initialState = initialState();
   }
+  // ...赋值初始state
   hook.memoizedState = hook.baseState = initialState;
+  // 创建queue
   const queue = (hook.queue = {
     pending: null,
     interleaved: null,
@@ -1261,6 +1273,7 @@ function mountState<S>(
     lastRenderedReducer: basicStateReducer,
     lastRenderedState: (initialState: any),
   });
+   // ...创建dispatch
   const dispatch: Dispatch<
     BasicStateAction<S>,
   > = (queue.dispatch = (dispatchAction.bind(
