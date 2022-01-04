@@ -149,6 +149,7 @@ function warnOnInvalidCallback(callback: mixed, callerName: string): void {
   }
 }
 
+// ReactDom.render起点函数
 function legacyRenderSubtreeIntoContainer(
   parentComponent: ?React$Component<any, any>,
   children: ReactNodeList,
@@ -161,15 +162,20 @@ function legacyRenderSubtreeIntoContainer(
     warnOnInvalidCallback(callback === undefined ? null : callback, 'render');
   }
 
+  // container 对应的是我们传入的真实 DOM 对象
   let root = container._reactRootContainer;
+  // 初始化 fiberRoot 对象
   let fiberRoot: FiberRoot;
+  // DOM 对象本身不存在 _reactRootContainer 属性，因此 root 为空
   if (!root) {
     // Initial mount
-    // 初始安装
+    // 初始化安装
+    // 若 root 为空，则初始化 _reactRootContainer，并将其值赋值给 root
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
       container,
       forceHydrate,
     );
+
     fiberRoot = root;
     // 判断是否有回调函数，有回调函数的话，初始化回调函数
     if (typeof callback === 'function') {
@@ -186,6 +192,7 @@ function legacyRenderSubtreeIntoContainer(
       updateContainer(children, fiberRoot, parentComponent, callback);
     });
   } else {
+    // else 逻辑处理的是非首次渲染的情况（即更新逻辑），其逻辑除了跳过了初始化工作，与上边基本一致
     fiberRoot = root;
     if (typeof callback === 'function') {
       const originalCallback = callback;
@@ -272,6 +279,7 @@ export function hydrate(
   );
 }
 
+// ReactDom.render起点
 export function render(
   element: React$Element<any>,
   container: Container,

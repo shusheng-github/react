@@ -1109,9 +1109,11 @@ declare function flushSyncWithoutWarningIfAlreadyRendering<R>(fn: () => R): R;
 // eslint-disable-next-line no-redeclare
 declare function flushSyncWithoutWarningIfAlreadyRendering(): void;
 // eslint-disable-next-line no-redeclare
+// 直接调用了传入的回调 fn。而在当前链路中，fn 是什么呢？fn 是一个针对 updateContainer 的调用
 export function flushSyncWithoutWarningIfAlreadyRendering(fn) {
   // In legacy mode, we flush pending passive effects at the beginning of the
   // next event, not at the end of the previous one.
+  // 在传统模式下，我们在下一个事件的开始，而不是在上一个事件的结束时冲刷待定的被动效果。
   if (
     rootWithPendingPassiveEffects !== null &&
     rootWithPendingPassiveEffects.tag === LegacyRoot &&
@@ -1120,6 +1122,7 @@ export function flushSyncWithoutWarningIfAlreadyRendering(fn) {
     flushPassiveEffects();
   }
 
+   // 这里是对上下文的处理
   const prevExecutionContext = executionContext;
   executionContext |= BatchedContext;
 
@@ -1129,11 +1132,13 @@ export function flushSyncWithoutWarningIfAlreadyRendering(fn) {
     ReactCurrentBatchConfig.transition = 0;
     setCurrentUpdatePriority(DiscreteEventPriority);
     if (fn) {
+      // 重点在这里，直接调用了传入的回调函数 fn，对应当前链路中的 updateContainer 方法
       return fn();
     } else {
       return undefined;
     }
   } finally {
+     // finally 逻辑里是对回调队列的处理，此处不用太关注
     setCurrentUpdatePriority(previousPriority);
     ReactCurrentBatchConfig.transition = prevTransition;
     executionContext = prevExecutionContext;
