@@ -300,6 +300,7 @@ export function updateContainer(
     }
   }
 
+  // 创建update
   const update = createUpdate(eventTime, lane);
   // Caution: React DevTools currently depends on this property
   // being called "element".

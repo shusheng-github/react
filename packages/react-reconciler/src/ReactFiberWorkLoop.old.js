@@ -373,7 +373,9 @@ export function getCurrentTime() {
 
 export function requestUpdateLane(fiber: Fiber): Lane {
   // Special cases
+  // 获取 mode 属性
   const mode = fiber.mode;
+  // 结合 mode 属性判断当前的模式
   if ((mode & ConcurrentMode) === NoMode) {
     return (SyncLane: Lane);
   } else if (
@@ -964,6 +966,8 @@ function markRootSuspended(root, suspendedLanes) {
 
 // This is the entry point for synchronous tasks that don't go
 // through Scheduler
+// render阶段的起点，render 阶段的任务就是完成 Fiber 树的构建，它是整个渲染链路中最核心的一环
+// 在异步渲染的模式下，render 阶段应该是一个可打断的异步过程
 function performSyncWorkOnRoot(root) {
   if (enableProfilerTimer && enableProfilerNestedUpdatePhase) {
     syncNestedUpdateFlag();
@@ -1206,6 +1210,8 @@ export function popRenderLanes(fiber: Fiber) {
   popFromStack(subtreeRenderLanesCursor, fiber);
 }
 
+// ，prepareFreshStack 的作用是重置一个新的堆栈环境，
+// 其中最需要我们关注的步骤，就是对createWorkInProgress 的调用
 function prepareFreshStack(root: FiberRoot, lanes: Lanes) {
   root.finishedWork = null;
   root.finishedLanes = NoLanes;
@@ -1227,6 +1233,8 @@ function prepareFreshStack(root: FiberRoot, lanes: Lanes) {
     }
   }
   workInProgressRoot = root;
+  // 创建workInProgress
+  // 这里入参中的 current 传入的是现有树结构中的 rootFiber 对象
   workInProgress = createWorkInProgress(root.current, null);
   workInProgressRootRenderLanes = subtreeRenderLanes = workInProgressRootIncludedLanes = lanes;
   workInProgressRootExitStatus = RootIncomplete;
@@ -1460,8 +1468,11 @@ function renderRootSync(root: FiberRoot, lanes: Lanes) {
 // 那么 workLoop 就是执行每一个单元的调度器，如果渲染没有被中断，那么 workLoop 会遍历一遍 fiber 树。
 // performUnitOfWork 包括两个阶段 beginWork 和 completeWork 。
 function workLoopSync() {
+  // workLoopSync 做的事情就是通过 while 循环反复判断 workInProgress 是否为空，
+  // 并在不为空的情况下针对它执行 performUnitOfWork 函数。
   // Already timed out, so perform work without checking if we need to yield.
   // 已经超时，所以在不检查我们是否需要让步的情况下执行工作。
+  // workInProgress 终于为空时，说明没有新的节点可以创建了，也就意味着已经完成对整棵 Fiber 树的构建
   while (workInProgress !== null) {
     performUnitOfWork(workInProgress);
   }
@@ -1564,28 +1575,38 @@ function workLoopConcurrent() {
 // 一直返回到 fiebrRoot ，期间可以形成effectList，对于初始化流程会创建 DOM ，对于 DOM 元素进行事件收集，
 // 处理style，className等。
 
+// 而 performUnitOfWork 函数将触发对 beginWork 的调用，进而实现对新 Fiber 节点的创建。
+// 若 beginWork 所创建的 Fiber 节点不为空，则 performUniOfWork 会用这个新的 Fiber 节点来更新 workInProgress 的值，为下一次循环做准备。
 function performUnitOfWork(unitOfWork: Fiber): void {
   // The current, flushed, state of this fiber is the alternate. Ideally
   // nothing should rely on this, but relying on it here means that we don't
   // need an additional field on the work in progress.
+  // 这个fiber的current、flushed，state状态是备用的。
+  // 理想情况下，不应该依赖它，但在这里依赖它意味着我们不需要在正在进行的工作上增加一个字段。
   const current = unitOfWork.alternate;
   setCurrentDebugFiberInDEV(unitOfWork);
 
   let next;
+  // 新建 Fiber 节点
   if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
     startProfilerTimer(unitOfWork);
+    // 创建当前节点的子节点
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
     stopProfilerTimerIfRunningAndRecordDelta(unitOfWork, true);
   } else {
+    // 创建当前节点的子节点
     next = beginWork(current, unitOfWork, subtreeRenderLanes);
   }
 
   resetCurrentDebugFiberInDEV();
+
   unitOfWork.memoizedProps = unitOfWork.pendingProps;
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
+    // 调用 completeUnitOfWork
     completeUnitOfWork(unitOfWork);
   } else {
+    // 将新的 Fiber 节点赋值给 workInProgress
     workInProgress = next;
   }
 
@@ -1670,15 +1691,21 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
       }
     }
 
+    // 获取当前节点的兄弟节点
     const siblingFiber = completedWork.sibling;
+    // 若兄弟节点存在
     if (siblingFiber !== null) {
       // If there is more work to do in this returnFiber, do that next.
+      // 将 workInProgress 赋值为当前节点的兄弟节点
       workInProgress = siblingFiber;
+      // 将正在进行的 completeUnitOfWork 逻辑 return 掉
       return;
     }
     // Otherwise, return to the parent
+     // 若兄弟节点不存在，completeWork 会被赋值为 returnFiber，也就是当前节点的父节点
     completedWork = returnFiber;
     // Update the next thing we're working on in case something throws.
+    // 这一步与上一步是相辅相成的，上下文中要求 workInProgress 与 completedWork 保持一致
     workInProgress = completedWork;
   } while (completedWork !== null);
 

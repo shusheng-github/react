@@ -840,13 +840,18 @@ export function completeSuspendedOffscreenHostContainer(
 // completeWork 阶段对于组件处理 context ；
 // 对于元素标签初始化，会创建真实 DOM ，将子孙 DOM 节点插入刚生成的 DOM 节点中；
 // 会触发 diffProperties 处理 props ，比如事件收集，style，className 处理
+// 1、创建DOM 节点（CreateInstance）
+// 2、将 DOM 节点插入到 DOM 树中（AppendAllChildren）
+// 3、为 DOM 节点设置属性（FinalizeInitialChildren）
 function completeWork(
   current: Fiber | null,
   workInProgress: Fiber,
   renderLanes: Lanes,
 ): Fiber | null {
+  // 取出 Fiber 节点的属性值，存储在 newProps 里
   const newProps = workInProgress.pendingProps;
 
+   // 根据 workInProgress 节点的 tag 属性的不同，决定要进入哪段逻辑
   switch (workInProgress.tag) {
     case IndeterminateComponent:
     case LazyComponent:
@@ -949,6 +954,7 @@ function completeWork(
           return null;
         }
 
+        // 接下来就为 DOM 节点的创建做准备了
         const currentHostContext = getHostContext();
         // TODO: Move createInstance to beginWork and keep it on a context
         // "stack" as the parent. Then append children as we go in beginWork
@@ -972,7 +978,7 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
-          // 为fiber创建对应DOM节点
+          // 为fiber创建对应DOM节点，createInstance 的作用是创建 DOM 节点
           // packages/react-dom/src/client/ReactDOMHostConfig.js
           const instance = createInstance(
             type,
@@ -983,9 +989,11 @@ function completeWork(
           );
 
           // 将子孙DOM节点插入刚生成的DOM节点中
+          // appendAllChildren 会尝试把上一步创建好的 DOM 节点挂载到 DOM 树上去
           appendAllChildren(instance, workInProgress, false, false);
 
           // DOM节点赋值给fiber.stateNode
+          // stateNode 用于存储当前 Fiber 节点对应的 DOM 节点
           workInProgress.stateNode = instance;
 
           // Certain renderers require commit-time effects for initial mount.
@@ -993,6 +1001,7 @@ function completeWork(
           // Make sure such renderers get scheduled for later work.
 
           // 与update逻辑中的updateHostComponent类似的处理props的过程
+          // finalizeInitialChildren 用来为 DOM 节点设置属性
           if (
             finalizeInitialChildren(
               instance,
