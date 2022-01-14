@@ -304,6 +304,14 @@ export function updateContainer(
 
    // 创建update
   const update = createUpdate(eventTime, lane);
+  // update = {
+  //   eventTime: eventTime,
+  //   lane: lane,
+  //   tag: UpdateState,
+  //   payload: null,
+  //   callback: null,
+  //   next: null
+  // };
   // Caution: React DevTools currently depends on this property
   // being called "element".
   // update.payload为需要挂载在根节点的组件

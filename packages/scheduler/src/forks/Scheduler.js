@@ -66,8 +66,10 @@ var LOW_PRIORITY_TIMEOUT = 10000;
 var IDLE_PRIORITY_TIMEOUT = maxSigned31BitInt;
 
 // Tasks are stored on a min heap
-var taskQueue = [];
-var timerQueue = [];
+// Tasks是使用了一个最小堆(小顶堆)的算法逻辑
+// 最小堆是一个特殊的二叉树，顶部节点为最小值，每个结点的结点值都不大于其左右孩子的结点值
+var taskQueue = []; //存储的是已过期任务
+var timerQueue = []; //存储的是未过期任务
 
 // Incrementing id counter. Used to maintain insertion order.
 var taskIdCounter = 1;
@@ -158,6 +160,8 @@ function flushWork(hasTimeRemaining, initialTime) {
 
   isPerformingWork = true;
   const previousPriorityLevel = currentPriorityLevel;
+  // flushWork 中将调用 workLoop，workLoop 会逐一执行 taskQueue 中的任务，
+  // 直到调度过程被暂停（时间片用尽）或任务全部被清空。
   try {
     if (enableProfiling) {
       try {
@@ -314,14 +318,21 @@ function unstable_wrapCallback(callback) {
   };
 }
 
+// unstable_scheduleCallback 是 Scheduler 导出的一个核心方法，它将结合任务的优先级信息为其执行不同的调度逻辑。
+// unstable_scheduleCallback 的主要工作是针对当前任务创建一个 task，
+// 然后结合 startTime 信息将这个 task 推入 timerQueue 或 taskQueue，
+// 最后根据 timerQueue 和 taskQueue 的情况，执行延时任务或即时任务
 function unstable_scheduleCallback(priorityLevel, callback, options) {
-  // 当前时间
+  // 获取当前时间
   var currentTime = getCurrentTime();
 
   // 开始啥时间
+  // 声明 startTime，startTime 是任务的预期开始时间
   var startTime;
+  // 以下是对 options 入参的处理
   if (typeof options === 'object' && options !== null) {
     var delay = options.delay;
+    // 若入参规定了延迟时间，则累加延迟时间
     if (typeof delay === 'number' && delay > 0) {
       startTime = currentTime + delay;
     } else {
@@ -332,7 +343,9 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
   }
 
   //  timeout 是根据当前任务的 priorityLevel 来定义的，Scheduler 目前有 5 种优先级的 Timeout 描述
+  // timeout 是 expirationTime 的计算依据
   var timeout;
+  // 根据 priorityLevel，确定 timeout 的值
   switch (priorityLevel) {
     case ImmediatePriority:
       timeout = IMMEDIATE_PRIORITY_TIMEOUT;
@@ -354,8 +367,10 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
 
   // expirationTime描述任务的过期时间
   // 计算过期时间：超时时间  = 开始时间（现在时间） + 任务超时的时间（上述设置那五个等级）
+   // 优先级越高，timout 越小，expirationTime 越小
   var expirationTime = startTime + timeout;
 
+  // 创建 task 对象
   // 创建一个新任务
   var newTask = {
     id: taskIdCounter++,
@@ -371,13 +386,16 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
 
   // 当 startTime > currentTime，意味着当前任务是被设置为 delay，task.sortIndex 被 startTime 赋值，并向 timerQueue push task
   // Else 的情况，也就是 当前任务没有设置 delay，task.sortIndex 被 expirationTime 赋值，并向 taskQueue push task
+  // 若当前时间小于开始时间，说明该任务可延时执行(未过期）
   if (startTime > currentTime) {
     // This is a delayed task.  这是一个延迟任务。
     // 通过开始时间排序
+    // 将未过期任务推入 "timerQueue"
     newTask.sortIndex = startTime;
     // 把任务放在timerQueue中
     // timerQueue存储的都是没有过期任务
     push(timerQueue, newTask);
+    // 若 taskQueue 中没有可执行的任务，而当前任务又是 timerQueue 中的第一个任务
     if (peek(taskQueue) === null && newTask === peek(timerQueue)) {
       // 
       // 所有任务都被延迟了，这是延迟最早的任务。
@@ -390,10 +408,14 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
       }
       // Schedule a timeout.
       // 执行setTimeout
+      // 那么就派发一个延时任务，这个延时任务用于检查当前任务是否过期
+      // 这个延时调用（也就是 handleTimeout）并不会直接调度执行当前任务——它的作用是在当前任务到期后，
+      // 将其从 timerQueue 中取出，加入 taskQueue 中，然后触发对 flushWork 的调用
       requestHostTimeout(handleTimeout, startTime - currentTime);
     }
   } else {
     // 通过 expirationTime 排序
+    // else 里处理的是当前时间大于 startTime 的情况，说明这个任务已过期
     newTask.sortIndex = expirationTime;
     // 把任务放入taskQueue 
     // taskQueue 存储的都是过期任务
@@ -409,6 +431,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
     if (!isHostCallbackScheduled && !isPerformingWork) {
       isHostCallbackScheduled = true;
       // 调度过期的任务
+      // 执行 taskQueue 中的任务
       requestHostCallback(flushWork);
     }
   }

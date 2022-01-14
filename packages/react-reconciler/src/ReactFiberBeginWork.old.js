@@ -239,7 +239,7 @@ import {disableLogs, reenableLogs} from 'shared/ConsolePatchingDev';
 
 const ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
 
-let didReceiveUpdate: boolean = false;
+let didReceiveUpdate: boolean = false;  //是否有更新的上下文待处理
 
 let didWarnAboutBadClass;
 let didWarnAboutModulePatternComponent;
@@ -3623,7 +3623,7 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
 }
 
 // 对于组件，执行部分生命周期，执行 render ，得到最新的 children 。
-// 向下遍历调和 children ，复用 oldFiber ( diff 算法)，diff 流程在第十二章已经讲过了。
+// 向下遍历调和 children ，复用 oldFiber ( diff 算法)
 // 打不同的副作用标签 effectTag ，比如类组件的生命周期，或者元素的增加，删除，更新。
 function beginWork(
   current: Fiber | null,
@@ -3704,6 +3704,7 @@ function beginWork(
       }
     }
   } else {
+    // 不需要更新的其他情况，这里我们的首次渲染就将执行到这一行的逻辑
     didReceiveUpdate = false;
   }
 
