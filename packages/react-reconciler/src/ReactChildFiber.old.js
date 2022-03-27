@@ -249,6 +249,9 @@ function resolveLazy(lazyType) {
 // a compiler or we can do it manually. Helpers that don't need this branching
 // live outside of this function.
 function ChildReconciler(shouldTrackSideEffects) {
+  // 关键的入参 shouldTrackSideEffects，意为“是否需要追踪副作用”，
+  // 因此 reconcileChildFibers 和 mountChildFibers 的不同，在于对副作用的处理不同；
+  // 删除节点的逻辑
   function deleteChild(returnFiber: Fiber, childToDelete: Fiber): void {
     if (!shouldTrackSideEffects) {
       // Noop.
@@ -349,6 +352,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     }
   }
 
+  // 单个节点的插入逻辑
   function placeSingleChild(newFiber: Fiber): Fiber {
     // This is simpler for the single child case. We only need to do a
     // placement for inserting new children.
@@ -736,6 +740,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     return knownKeys;
   }
 
+  // 处理多个子节点的情况
   function reconcileChildrenArray(
     returnFiber: Fiber,
     currentFirstChild: Fiber | null,
@@ -1268,6 +1273,8 @@ function ChildReconciler(shouldTrackSideEffects) {
     newChild: any,
     lanes: Lanes,
   ): Fiber | null {
+    // 这是一个逻辑分发器，它读取入参后，会经过一系列的条件判断，调用上方所定义的负责具体节点操作的函数
+
     // This function is not recursive.
     // If the top level item is an array, we treat it as a set of children,
     // not as a fragment. Nested arrays on the other hand will be treated as

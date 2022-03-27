@@ -251,8 +251,10 @@ export function resolveLazyComponentTag(Component: Function): WorkTag {
 
 // This is used to create an alternate fiber to do work on.
 // 这用于创建alternate fiber以进行工作。
+// 这里入参中的 current 传入的是现有树结构中的 rootFiber 对象
 export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
   let workInProgress = current.alternate;
+  // ReactDOM.render 触发的首屏渲染将进入这个逻辑
   if (workInProgress === null) {
     // We use a double buffering pooling technique because we know that we'll
     // only ever need at most two versions of a tree. We pool the "other" unused
@@ -262,6 +264,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
     // 我们使用双缓冲池技术，因为我们知道我们最多只需要树的两个版本。 
     // 我们汇集了我们可以自由重用的“其他”未使用节点。 
     // 这是惰性创建的，以避免为从未更新的事物分配额外的对象。 如果需要，它还允许我们回收额外的内存。
+    // workInProgress 是 createFiber 方法的返回值
     workInProgress = createFiber(
       current.tag,
       pendingProps,
@@ -280,7 +283,9 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
       workInProgress._debugHookTypes = current._debugHookTypes;
     }
 
+    // workInProgress 的 alternate 将指向 current
     workInProgress.alternate = current;
+    // current 的 alternate 将反过来指向 workInProgress
     current.alternate = workInProgress;
   } else {
     workInProgress.pendingProps = pendingProps;
@@ -363,6 +368,7 @@ export function createWorkInProgress(current: Fiber, pendingProps: any): Fiber {
     }
   }
 
+  // 返回 workInProgress 节点
   return workInProgress;
 }
 

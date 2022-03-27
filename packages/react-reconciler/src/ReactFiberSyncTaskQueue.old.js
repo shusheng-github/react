@@ -59,10 +59,14 @@ export function flushSyncCallbacks() {
       const queue = syncQueue;
       // TODO: Is this necessary anymore? The only user code that runs in this
       // queue is in the render or commit phases.
+      // TODO：这还有必要吗？唯一在此运行的用户代码 队列中运行的用户代码是在渲染或提交阶段
       setCurrentUpdatePriority(DiscreteEventPriority);
       for (; i < queue.length; i++) {
+        // 取出下一步运行的函数，并且执行
+        // 例如performSyncWorkOnRoot
         let callback = queue[i];
         do {
+          
           callback = callback(isSync);
         } while (callback !== null);
       }

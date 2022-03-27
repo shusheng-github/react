@@ -256,7 +256,9 @@ export function createContainer(
   );
 }
 
-// 创建update
+// 1、请求当前 Fiber 节点的 lane（优先级）；
+// 2、结合 lane（优先级），创建当前 Fiber 节点的 update 对象，并将其入队；
+// 3、调度当前节点（rootFiber）。
 export function updateContainer(
   element: ReactNodeList,
   container: OpaqueRoot,
@@ -266,8 +268,10 @@ export function updateContainer(
   if (__DEV__) {
     onScheduleRoot(container, element);
   }
+  // 这是一个 event 相关的入参
   const current = container.current;
   const eventTime = requestEventTime();
+  // 这是一个比较关键的入参，lane 表示优先级
   const lane = requestUpdateLane(current);
 
   if (enableSchedulingProfiler) {
@@ -300,6 +304,14 @@ export function updateContainer(
 
    // 创建update
   const update = createUpdate(eventTime, lane);
+  // update = {
+  //   eventTime: eventTime,
+  //   lane: lane,
+  //   tag: UpdateState,
+  //   payload: null,
+  //   callback: null,
+  //   next: null
+  // };
   // Caution: React DevTools currently depends on this property
   // being called "element".
   // update.payload为需要挂载在根节点的组件
@@ -307,6 +319,7 @@ export function updateContainer(
   update.payload = {element};
 
   // callback为ReactDOM.render的第三个参数 —— 回调函数
+  // 处理 callback，这个 callback 其实就是我们调用 ReactDOM.render 时传入的 callback
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     if (__DEV__) {
@@ -321,14 +334,16 @@ export function updateContainer(
     update.callback = callback;
   }
 
-  // 将生成的update加入updateQueue
+  // 将生成的update加入updateQueue，将 update 入队
   enqueueUpdate(current, update, lane);
   // 调度更新
+  // 调度 fiberRoot 
   const root = scheduleUpdateOnFiber(current, lane, eventTime);
   if (root !== null) {
     entangleTransitions(root, current, lane);
   }
-
+  
+  // 返回当前节点（fiberRoot）的优先级
   return lane;
 }
 

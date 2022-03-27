@@ -239,7 +239,7 @@ import {disableLogs, reenableLogs} from 'shared/ConsolePatchingDev';
 
 const ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
 
-let didReceiveUpdate: boolean = false;
+let didReceiveUpdate: boolean = false;  //是否有更新的上下文待处理
 
 let didWarnAboutBadClass;
 let didWarnAboutModulePatternComponent;
@@ -3623,7 +3623,7 @@ function attemptEarlyBailoutIfNoScheduledUpdate(
 }
 
 // 对于组件，执行部分生命周期，执行 render ，得到最新的 children 。
-// 向下遍历调和 children ，复用 oldFiber ( diff 算法)，diff 流程在第十二章已经讲过了。
+// 向下遍历调和 children ，复用 oldFiber ( diff 算法)
 // 打不同的副作用标签 effectTag ，比如类组件的生命周期，或者元素的增加，删除，更新。
 function beginWork(
   current: Fiber | null,
@@ -3647,11 +3647,13 @@ function beginWork(
       );
     }
   }
-
+  //  current 节点不为空的情况下，会加一道辨识，看看是否有更新逻辑要处理
   if (current !== null) {
+    // 获取新旧 props
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
 
+    // 若 props 更新或者上下文改变，则认为需要"接受更新"
     if (
       oldProps !== newProps ||
       hasLegacyContextChanged() ||
@@ -3661,6 +3663,7 @@ function beginWork(
       // If props or context changed, mark the fiber as having performed work.
       // This may be unset if the props are determined to be equal later (memo).
       // 如果props或context发生变化，请将fiber标记为已执行工作。 如果稍后确定props相等（备忘录），则可能会取消设置。
+      // 打个更新标记
       didReceiveUpdate = true;
     } else {
       // Neither props nor legacy context changes. Check if there's a pending
@@ -3696,10 +3699,12 @@ function beginWork(
         // nor legacy context. Set this to false. If an update queue or context
         // consumer produces a changed value, it will set this to true. Otherwise,
         // the component will assume the children have not changed and bail out.
+        // 不需要更新的其他情况，这里我们的首次渲染就将执行到这一行的逻辑
         didReceiveUpdate = false;
       }
     }
   } else {
+    // 不需要更新的其他情况，这里我们的首次渲染就将执行到这一行的逻辑
     didReceiveUpdate = false;
   }
 
@@ -3709,7 +3714,8 @@ function beginWork(
   // sometimes bails out later in the begin phase. This indicates that we should
   // move this assignment out of the common path and into each branch.
   workInProgress.lanes = NoLanes;
-
+  
+  // beginWork 的核心逻辑是根据 fiber 节点（workInProgress）的 tag 属性的不同，调用不同的节点创建函数。
   switch (workInProgress.tag) {
     case IndeterminateComponent: {
       return mountIndeterminateComponent(
@@ -3758,10 +3764,13 @@ function beginWork(
         renderLanes,
       );
     }
+    // 根节点将进入这个逻辑
     case HostRoot:
       return updateHostRoot(current, workInProgress, renderLanes);
+    // dom 标签对应的节点将进入这个逻辑
     case HostComponent:
       return updateHostComponent(current, workInProgress, renderLanes);
+    // 文本节点将进入这个逻辑
     case HostText:
       return updateHostText(current, workInProgress);
     case SuspenseComponent:
