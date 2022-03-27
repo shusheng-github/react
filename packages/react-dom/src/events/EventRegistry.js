@@ -20,6 +20,8 @@ if (enableCreateEventHandleAPI) {
 
 /**
  * Mapping from registration name to event name
+ * 从注册名称到事件名称的映射
+ * 合成事件和其依赖的原生事件集合的映射
  */
 export const registrationNameDependencies = {};
 

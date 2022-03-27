@@ -83,8 +83,10 @@ export function createEventListenerWrapperWithPriority(
   domEventName: DOMEventName,
   eventSystemFlags: EventSystemFlags,
 ): Function {
+  // 从前文提到的 eventPriorities 中获取当前原生事件的优先级
   const eventPriority = getEventPriority(domEventName);
   let listenerWrapper;
+  // 根据不同的优先级提供不同的监听函数
   switch (eventPriority) {
     case DiscreteEventPriority:
       listenerWrapper = dispatchDiscreteEvent;
@@ -97,6 +99,9 @@ export function createEventListenerWrapperWithPriority(
       listenerWrapper = dispatchEvent;
       break;
   }
+  // 三类监听器的入参其实一样，其函数签名均为：
+  // (domEventName: DOMEventName, eventSystemFlags: EventSystemFlags, targetContainer: EventTarget, nativeEvent: AnyNativeEvent) => void
+  // 前三个参数由当前函数提供，最后一个参数便是原生监听器会拥有的唯一入参 Event 对象
   return listenerWrapper.bind(
     null,
     domEventName,
@@ -105,6 +110,7 @@ export function createEventListenerWrapperWithPriority(
   );
 }
 
+// 离散事件监听器
 function dispatchDiscreteEvent(
   domEventName,
   eventSystemFlags,
