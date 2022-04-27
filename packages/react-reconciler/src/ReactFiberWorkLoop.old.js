@@ -546,7 +546,7 @@ export function scheduleUpdateOnFiber(
   return root;
 }
 
-// This is split into a separate function so we can mark a fiber with pending
+// This is split itno a separate function so we can mark a fiber with pending
 // work without treating it as a typical update that originates from an event;
 // e.g. retrying a Suspense boundary isn't an update, but it does schedule work
 // on a fiber.

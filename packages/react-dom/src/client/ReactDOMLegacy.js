@@ -171,6 +171,7 @@ function legacyRenderSubtreeIntoContainer(
     // Initial mount
     // 初始化安装
     // 若 root 为空，则初始化 _reactRootContainer，并将其值赋值给 root
+    // container指ReactDOM.render的第二个参数（即应用挂载的DOM节点）
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
       container,
       forceHydrate,

@@ -111,7 +111,8 @@ export function createFiberRoot(
   // Cyclic construction. This cheats the type system right now because
   // stateNode is any.
   // 循环构造。 这现在欺骗了类型系统，因为 stateNode 是 any。
-  // uninitializedFiber =》未初始化的光纤
+  // uninitializedFiber =》未初始化的fiber
+  // 创建rootFiber
   const uninitializedFiber = createHostRootFiber(
     tag,
     isStrictMode,
