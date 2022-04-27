@@ -782,7 +782,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         knownKeys = warnOnInvalidKey(child, knownKeys, returnFiber);
       }
     }
-    debugger
+    
     let resultingFirstChild: Fiber | null = null;
     let previousNewFiber: Fiber | null = null;
 

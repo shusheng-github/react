@@ -19,6 +19,7 @@ import {
 
 import {enableCreateEventHandleAPI} from 'shared/ReactFeatureFlags';
 
+// 原生事件和合成事件的映射
 export const topLevelEventsToReactNames: Map<
   DOMEventName,
   string | null,

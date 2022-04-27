@@ -58,12 +58,16 @@ function extractEvents(
   eventSystemFlags: EventSystemFlags,
   targetContainer: EventTarget,
 ): void {
+  // 根据原生事件名称获取合成事件名称
+  // 效果: onClick = topLevelEventsToReactNames.get('click')
   const reactName = topLevelEventsToReactNames.get(domEventName);
   if (reactName === undefined) {
     return;
   }
+  // 默认合成函数的构造函数
   let SyntheticEventCtor = SyntheticEvent;
   let reactEventType: string = domEventName;
+   // 按照原生事件名称来获取对应的合成事件构造函数
   switch (domEventName) {
     case 'keypress':
       // Firefox creates a keypress event for function keys too. This removes
@@ -158,6 +162,7 @@ function extractEvents(
       break;
   }
 
+  // 是否是捕获阶段
   const inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0;
   if (
     enableCreateEventHandleAPI &&
@@ -194,6 +199,7 @@ function extractEvents(
       // This is a breaking change that can wait until React 18.
       domEventName === 'scroll';
 
+    // 核心，获取当前阶段的所有事件
     const listeners = accumulateSinglePhaseListeners(
       targetInst,
       reactName,
@@ -204,6 +210,7 @@ function extractEvents(
     );
     if (listeners.length > 0) {
       // Intentionally create event lazily.
+      // 懒惰的生成合成事件的 Event 对象
       const event = new SyntheticEventCtor(
         reactName,
         reactEventType,
@@ -211,6 +218,7 @@ function extractEvents(
         nativeEvent,
         nativeEventTarget,
       );
+      // 入队
       dispatchQueue.push({event, listeners});
     }
   }

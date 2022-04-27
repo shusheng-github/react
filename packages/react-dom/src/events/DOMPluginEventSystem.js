@@ -85,12 +85,15 @@ type DispatchEntry = {|
 export type DispatchQueue = Array<DispatchEntry>;
 
 // TODO: remove top-level side effect.
+// 这五个 EventPlugin 关系可以这么理解，SimpleEventPlugin 是合成事件系统的基本功能实现，而其他的几个 EventPlugin 只不过是它的 polyfill。
 SimpleEventPlugin.registerEvents();
 EnterLeaveEventPlugin.registerEvents();
 ChangeEventPlugin.registerEvents();
 SelectEventPlugin.registerEvents();
 BeforeInputEventPlugin.registerEvents();
 
+// extractEvents 的内容其实很简单，按需调用几个 EventPlugin 的 extractEvents，
+// 这几个 extractEvents 的目的是一样的，只不过针对不同的事件可能会生成不同的事件。
 function extractEvents(
   dispatchQueue: DispatchQueue,
   domEventName: DOMEventName,
@@ -256,29 +259,38 @@ function processDispatchQueueItemsInOrder(
   }
 }
 
+// 执行事件
 export function processDispatchQueue(
   dispatchQueue: DispatchQueue,
   eventSystemFlags: EventSystemFlags,
 ): void {
+  // 通过 eventSystemFlags 判断当前事件阶段
   const inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0;
   for (let i = 0; i < dispatchQueue.length; i++) {
+    // 取出其合成 Event 对象及事件集合
     const {event, listeners} = dispatchQueue[i];
+    // 这个函数就负责事件的调用
+    // 如果是捕获阶段的事件则倒序调用，反之为正序调用，调用时会传入合成 Event 对象
     processDispatchQueueItemsInOrder(event, listeners, inCapturePhase);
     //  event system doesn't use pooling.
   }
   // This would be a good time to rethrow if any of the event handlers threw.
+  // 抛出中间错误
   rethrowCaughtError();
 }
 
 function dispatchEventsForPlugins(
-  domEventName: DOMEventName,
-  eventSystemFlags: EventSystemFlags,
-  nativeEvent: AnyNativeEvent,
-  targetInst: null | Fiber,
-  targetContainer: EventTarget,
+  domEventName: DOMEventName,// 事件名称
+  eventSystemFlags: EventSystemFlags,// 事件处理阶段，4 = 捕获阶段，0 = 冒泡阶段
+  nativeEvent: AnyNativeEvent,// 监听器的原生入参 Event 对象
+  targetInst: null | Fiber,// event.target 对应的 DOM 节点的 Fiber 节点
+  targetContainer: EventTarget,// 根 DOM 节点
 ): void {
+  // 这里也获取了一遍 event.target
   const nativeEventTarget = getEventTarget(nativeEvent);
+   // 事件队列，收集到的事件都会存储到这
   const dispatchQueue: DispatchQueue = [];
+  // 收集事件
   extractEvents(
     dispatchQueue,
     domEventName,
@@ -288,6 +300,7 @@ function dispatchEventsForPlugins(
     eventSystemFlags,
     targetContainer,
   );
+  // 执行事件
   processDispatchQueue(dispatchQueue, eventSystemFlags);
 }
 
@@ -382,8 +395,15 @@ const listeningMarker =
     .slice(2);
 
 export function listenToAllSupportedEvents(rootContainerElement: EventTarget) {
+  // 入参 rootContainerElement 由创建 ReactRoot 的函数传入，其内容为 React 应用的根 DOM 节点。
+  // listeningMarker 是一个由固定字符加随机字符组成的标识，用于标识节点是否已经以 react 的方式在所有原生事件上添加监听事件，
+  // 不存在的情况下进入逻辑，存在的情况下不执行逻辑
   if (!(rootContainerElement: any)[listeningMarker]) {
+    // 添加标识
     (rootContainerElement: any)[listeningMarker] = true;
+    // 遍历所有原生事件
+    // 除了不需要在冒泡阶段添加事件代理的原生事件，仅在捕获阶段添加事件代理
+    // 其余的事件都需要在捕获、冒泡阶段添加代理事件
     allNativeEvents.forEach(domEventName => {
       // We handle selectionchange separately because it
       // doesn't bubble and needs to be on the document.
@@ -416,6 +436,7 @@ function addTrappedEventListener(
   isCapturePhaseListener: boolean,
   isDeferredListenerForLegacyFBSupport?: boolean,
 ) {
+  // 创建带有优先级的事件监听器，具体内容后面概述
   let listener = createEventListenerWrapperWithPriority(
     targetContainer,
     domEventName,
@@ -470,6 +491,8 @@ function addTrappedEventListener(
     };
   }
   // TODO: There are too many combinations here. Consolidate them.
+  // 在原生事件上添加不同阶段的事件监听器
+  // 处理捕获阶段/冒泡阶段
   if (isCapturePhaseListener) {
     if (isPassiveListener !== undefined) {
       unsubscribeListener = addEventCaptureListenerWithPassiveFlag(
@@ -661,7 +684,9 @@ export function accumulateSinglePhaseListeners(
   accumulateTargetOnly: boolean,
   nativeEvent: AnyNativeEvent,
 ): Array<DispatchListener> {
+  // 捕获阶段合成事件名称
   const captureName = reactName !== null ? reactName + 'Capture' : null;
+  // 最终合成事件名称
   const reactEventName = inCapturePhase ? captureName : reactName;
   let listeners: Array<DispatchListener> = [];
 
@@ -672,6 +697,7 @@ export function accumulateSinglePhaseListeners(
   while (instance !== null) {
     const {stateNode, tag} = instance;
     // Handle listeners that are on HostComponents (i.e. <div>)
+    // 如果是有效节点则获取其事件
     if (tag === HostComponent && stateNode !== null) {
       lastHostComponent = stateNode;
 
@@ -699,9 +725,12 @@ export function accumulateSinglePhaseListeners(
       }
 
       // Standard React on* listeners, i.e. onClick or onClickCapture
+      // 获取存储在 Fiber 节点上 Props 里的对应事件（如果存在）
       if (reactEventName !== null) {
         const listener = getListener(instance, reactEventName);
+        // 入队
         if (listener != null) {
+          // 简单返回一个 {instance, listener, lastHostComponent} 对象
           listeners.push(
             createDispatchListener(instance, listener, lastHostComponent),
           );
@@ -739,6 +768,7 @@ export function accumulateSinglePhaseListeners(
     // If we are only accumulating events for the target, then we don't
     // continue to propagate through the React fiber tree to find other
     // listeners.
+    // scroll 不会冒泡，获取一次就结束了
     if (accumulateTargetOnly) {
       break;
     }
@@ -759,8 +789,10 @@ export function accumulateSinglePhaseListeners(
         listeners = [];
       }
     }
+     // 其父级 Fiber 节点，向上递归
     instance = instance.return;
   }
+  // 返回监听器集合
   return listeners;
 }
 
