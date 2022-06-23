@@ -27,16 +27,16 @@ import {
 
 import {
   createContainer,
+  createHydrationContainer,
   findHostInstanceWithNoPortals,
   updateContainer,
-  flushSyncWithoutWarningIfAlreadyRendering,
+  flushSync,
   getPublicRootInstance,
   findHostInstance,
   findHostInstanceWithWarning,
 } from 'react-reconciler/src/ReactFiberReconciler';
 import {LegacyRoot} from 'react-reconciler/src/ReactRootTags';
 import getComponentNameFromType from 'shared/getComponentNameFromType';
-import invariant from 'shared/invariant';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import {has as hasInstance} from 'shared/ReactInstanceMap';
 
@@ -103,37 +103,90 @@ function getReactRootElementInContainer(container: any) {
   }
 }
 
+function noopOnRecoverableError() {
+  // This isn't reachable because onRecoverableError isn't called in the
+  // legacy API.
+}
 // legacyCreateRootFromDOMContainer方法内部会调用createFiberRoot方法完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueue。
 function legacyCreateRootFromDOMContainer(
   container: Container,
-  forceHydrate: boolean,
+  initialChildren: ReactNodeList,
+  parentComponent: ?React$Component<any, any>,
+  callback: ?Function,
+  isHydrationContainer: boolean,
 ): FiberRoot {
   // First clear any existing content.
   // 首先清除任何现有的内容。
-  if (!forceHydrate) {
+  if (isHydrationContainer) {
+    if (typeof callback === 'function') {
+      const originalCallback = callback;
+      callback = function() {
+        const instance = getPublicRootInstance(root);
+        originalCallback.call(instance);
+      };
+    }
+
+    const root = createHydrationContainer(
+      initialChildren,
+      callback,
+      container,
+      LegacyRoot,
+      null, // hydrationCallbacks
+      false, // isStrictMode
+      false, // concurrentUpdatesByDefaultOverride,
+      '', // identifierPrefix
+      noopOnRecoverableError,
+      // TODO(luna) Support hydration later
+      null,
+    );
+    container._reactRootContainer = root;
+    markContainerAsRoot(root.current, container);
+
+    const rootContainerElement =
+      container.nodeType === COMMENT_NODE ? container.parentNode : container;
+    listenToAllSupportedEvents(rootContainerElement);
+
+    flushSync();
+    return root;
+  } else {
+    // First clear any existing content.
     let rootSibling;
     while ((rootSibling = container.lastChild)) {
       container.removeChild(rootSibling);
     }
+
+    if (typeof callback === 'function') {
+      const originalCallback = callback;
+      callback = function() {
+        const instance = getPublicRootInstance(root);
+        originalCallback.call(instance);
+      };
+    }
+     // 完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueue
+    const root = createContainer(
+      container,
+      LegacyRoot,
+      null, // hydrationCallbacks
+      false, // isStrictMode
+      false, // concurrentUpdatesByDefaultOverride,
+      '', // identifierPrefix
+      noopOnRecoverableError, // onRecoverableError
+      null, // transitionCallbacks
+    );
+    container._reactRootContainer = root;
+    markContainerAsRoot(root.current, container);
+
+    const rootContainerElement =
+      container.nodeType === COMMENT_NODE ? container.parentNode : container;
+    listenToAllSupportedEvents(rootContainerElement);
+
+    // Initial mount should not be batched.
+    flushSync(() => {
+      updateContainer(initialChildren, root, parentComponent, callback);
+    });
+
+    return root;
   }
-
-  // 完成fiberRootNode和rootFiber的创建以及关联。并初始化updateQueue
-  const root = createContainer(
-    container,
-    LegacyRoot,
-    forceHydrate,
-    null, // hydrationCallbacks
-    false, // isStrictMode
-    false, // concurrentUpdatesByDefaultOverride,
-  );
-  // 标记容器为根
-  markContainerAsRoot(root.current, container);
-
-  const rootContainerElement =
-    container.nodeType === COMMENT_NODE ? container.parentNode : container;
-  listenToAllSupportedEvents(rootContainerElement);
-
-  return root;
 }
 
 function warnOnInvalidCallback(callback: mixed, callerName: string): void {
@@ -162,50 +215,30 @@ function legacyRenderSubtreeIntoContainer(
     warnOnInvalidCallback(callback === undefined ? null : callback, 'render');
   }
 
-  // container 对应的是我们传入的真实 DOM 对象
-  let root = container._reactRootContainer;
-  // 初始化 fiberRoot 对象
-  let fiberRoot: FiberRoot;
-  // DOM 对象本身不存在 _reactRootContainer 属性，因此 root 为空
-  if (!root) {
+  const maybeRoot = container._reactRootContainer;
+  let root: FiberRoot;
+  if (!maybeRoot) {
     // Initial mount
-    // 初始化安装
-    // 若 root 为空，则初始化 _reactRootContainer，并将其值赋值给 root
-    // container指ReactDOM.render的第二个参数（即应用挂载的DOM节点）
-    root = container._reactRootContainer = legacyCreateRootFromDOMContainer(
+    root = legacyCreateRootFromDOMContainer(
       container,
+      children,
+      parentComponent,
+      callback,
       forceHydrate,
     );
-
-    fiberRoot = root;
-    // 判断是否有回调函数，有回调函数的话，初始化回调函数
-    if (typeof callback === 'function') {
-      const originalCallback = callback;
-      callback = function() {
-        const instance = getPublicRootInstance(fiberRoot);
-        originalCallback.call(instance);
-      };
-    }
-    // Initial mount should not be batched.
-    // 初始装载不进行批处理
-    // 如果已经在渲染中，在没有警告的情况下冲刷同步
-    flushSyncWithoutWarningIfAlreadyRendering(() => {
-      updateContainer(children, fiberRoot, parentComponent, callback);
-    });
   } else {
-    // else 逻辑处理的是非首次渲染的情况（即更新逻辑），其逻辑除了跳过了初始化工作，与上边基本一致
-    fiberRoot = root;
+    root = maybeRoot;
     if (typeof callback === 'function') {
       const originalCallback = callback;
       callback = function() {
-        const instance = getPublicRootInstance(fiberRoot);
+        const instance = getPublicRootInstance(root);
         originalCallback.call(instance);
       };
     }
     // Update
-    updateContainer(children, fiberRoot, parentComponent, callback);
+    updateContainer(children, root, parentComponent, callback);
   }
-  return getPublicRootInstance(fiberRoot);
+  return getPublicRootInstance(root);
 }
 
 export function findDOMNode(
@@ -254,10 +287,10 @@ export function hydrate(
     );
   }
 
-  invariant(
-    isValidContainerLegacy(container),
-    'Target container is not a DOM element.',
-  );
+  if (!isValidContainerLegacy(container)) {
+    throw new Error('Target container is not a DOM element.');
+  }
+
   if (__DEV__) {
     const isModernRoot =
       isContainerMarkedAsRoot(container) &&
@@ -265,7 +298,7 @@ export function hydrate(
     if (isModernRoot) {
       console.error(
         'You are calling ReactDOM.hydrate() on a container that was previously ' +
-          'passed to ReactDOM.createRoot(). This is not supported. ' +
+          'passed to ReactDOMClient.createRoot(). This is not supported. ' +
           'Did you mean to call hydrateRoot(container, element)?',
       );
     }
@@ -295,10 +328,10 @@ export function render(
     );
   }
 
-  invariant(
-    isValidContainerLegacy(container),
-    'Target container is not a DOM element.',
-  );
+  if (!isValidContainerLegacy(container)) {
+    throw new Error('Target container is not a DOM element.');
+  }
+
   if (__DEV__) {
     const isModernRoot =
       isContainerMarkedAsRoot(container) &&
@@ -306,7 +339,7 @@ export function render(
     if (isModernRoot) {
       console.error(
         'You are calling ReactDOM.render() on a container that was previously ' +
-          'passed to ReactDOM.createRoot(). This is not supported. ' +
+          'passed to ReactDOMClient.createRoot(). This is not supported. ' +
           'Did you mean to call root.render(element)?',
       );
     }
@@ -326,14 +359,23 @@ export function unstable_renderSubtreeIntoContainer(
   containerNode: Container,
   callback: ?Function,
 ) {
-  invariant(
-    isValidContainerLegacy(containerNode),
-    'Target container is not a DOM element.',
-  );
-  invariant(
-    parentComponent != null && hasInstance(parentComponent),
-    'parentComponent must be a valid React Component',
-  );
+  if (__DEV__) {
+    console.error(
+      'ReactDOM.unstable_renderSubtreeIntoContainer() is no longer supported ' +
+        'in React 18. Consider using a portal instead. Until you switch to ' +
+        "the createRoot API, your app will behave as if it's running React " +
+        '17. Learn more: https://reactjs.org/link/switch-to-createroot',
+    );
+  }
+
+  if (!isValidContainerLegacy(containerNode)) {
+    throw new Error('Target container is not a DOM element.');
+  }
+
+  if (parentComponent == null || !hasInstance(parentComponent)) {
+    throw new Error('parentComponent must be a valid React Component');
+  }
+
   return legacyRenderSubtreeIntoContainer(
     parentComponent,
     element,
@@ -344,10 +386,11 @@ export function unstable_renderSubtreeIntoContainer(
 }
 
 export function unmountComponentAtNode(container: Container) {
-  invariant(
-    isValidContainerLegacy(container),
-    'unmountComponentAtNode(...): Target container is not a DOM element.',
-  );
+  if (!isValidContainerLegacy(container)) {
+    throw new Error(
+      'unmountComponentAtNode(...): Target container is not a DOM element.',
+    );
+  }
 
   if (__DEV__) {
     const isModernRoot =
@@ -356,7 +399,7 @@ export function unmountComponentAtNode(container: Container) {
     if (isModernRoot) {
       console.error(
         'You are calling ReactDOM.unmountComponentAtNode() on a container that was previously ' +
-          'passed to ReactDOM.createRoot(). This is not supported. Did you mean to call root.unmount()?',
+          'passed to ReactDOMClient.createRoot(). This is not supported. Did you mean to call root.unmount()?',
       );
     }
   }
@@ -374,7 +417,7 @@ export function unmountComponentAtNode(container: Container) {
     }
 
     // Unmount should not be batched.
-    flushSyncWithoutWarningIfAlreadyRendering(() => {
+    flushSync(() => {
       legacyRenderSubtreeIntoContainer(null, null, container, false, () => {
         // $FlowFixMe This should probably use `delete container._reactRootContainer`
         container._reactRootContainer = null;

@@ -5,9 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import invariant from 'shared/invariant';
-
 import ReactNoopUpdateQueue from './ReactNoopUpdateQueue';
+import assign from 'shared/assign';
 
 const emptyObject = {};
 if (__DEV__) {
@@ -64,15 +63,19 @@ Component.prototype.isReactComponent = {};
  */
 // 绑定setState方法
 Component.prototype.setState = function(partialState, callback) {
-  invariant(
-    typeof partialState === 'object' ||
-      typeof partialState === 'function' ||
-      partialState == null,
-    'setState(...): takes an object of state variables to update or a ' +
-      'function which returns an object of state variables.',
-  );
-  // setState内部调用enqueueSetState方法
+   // setState内部调用enqueueSetState方法
   // packages/react-reconciler/src/ReactFiberClassComponent.old.js
+  if (
+    typeof partialState !== 'object' &&
+    typeof partialState !== 'function' &&
+    partialState != null
+  ) {
+    throw new Error(
+      'setState(...): takes an object of state variables to update or a ' +
+        'function which returns an object of state variables.',
+    );
+  }
+
   this.updater.enqueueSetState(this, partialState, callback, 'setState');
 };
 
@@ -155,8 +158,7 @@ function PureComponent(props, context, updater) {
 const pureComponentPrototype = (PureComponent.prototype = new ComponentDummy());
 pureComponentPrototype.constructor = PureComponent;
 // Avoid an extra prototype jump for these methods.
-Object.assign(pureComponentPrototype, Component.prototype);
-// pureComponentPrototype 纯组件构造函数的 prototype 对象，绑定isPureReactComponent 属性
+assign(pureComponentPrototype, Component.prototype);
 pureComponentPrototype.isPureReactComponent = true;
 
 export {Component, PureComponent};

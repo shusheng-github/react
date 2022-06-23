@@ -87,6 +87,7 @@ const simpleEventPluginEvents = [
   'progress',
   'rateChange',
   'reset',
+  'resize',
   'seeked',
   'seeking',
   'stalled',
