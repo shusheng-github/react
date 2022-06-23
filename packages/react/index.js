@@ -29,6 +29,10 @@ export type ElementRef<C> = React$ElementRef<C>;
 export type Config<Props, DefaultProps> = React$Config<Props, DefaultProps>;
 export type ChildrenArray<+T> = $ReadOnlyArray<ChildrenArray<T>> | T;
 
+// 非源码，本地debug源码需要
+import * as React from './src/React'
+export default React
+
 // Export all exports so that they're available in tests.
 // We can't use export * from in Flow for some reason.
 export {

@@ -268,6 +268,7 @@ function workLoop(hasTimeRemaining, initialTime) {
   }
 }
 
+// 接受一个优先级和一个回调函数
 function unstable_runWithPriority(priorityLevel, eventHandler) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -338,7 +339,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
   // 获取当前时间
   var currentTime = getCurrentTime();
 
-  // 开始啥时间
+  // 开始时间
   // 声明 startTime，startTime 是任务的预期开始时间
   var startTime;
   // 以下是对 options 入参的处理
@@ -430,7 +431,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
     // else 里处理的是当前时间大于 startTime 的情况，说明这个任务已过期
     newTask.sortIndex = expirationTime;
     // 把任务放入taskQueue 
-    // taskQueue 存储的都是过期任务
+    // taskQueue 存储的都是过期任务，需立即执行的任务
     push(taskQueue, newTask);
     if (enableProfiling) {
       markTaskStart(newTask, currentTime);
