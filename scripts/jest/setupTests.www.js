@@ -19,4 +19,23 @@ jest.mock('shared/ReactFeatureFlags', () => {
   return wwwFlags;
 });
 
+jest.mock('shared/ReactSymbols', () => {
+  return jest.requireActual('shared/ReactSymbols.www');
+});
+
+jest.mock('scheduler/src/SchedulerFeatureFlags', () => {
+  const schedulerSrcPath = process.cwd() + '/packages/scheduler';
+  jest.mock(
+    'SchedulerFeatureFlags',
+    () =>
+      jest.requireActual(
+        schedulerSrcPath + '/src/forks/SchedulerFeatureFlags.www-dynamic'
+      ),
+    {virtual: true}
+  );
+  return jest.requireActual(
+    schedulerSrcPath + '/src/forks/SchedulerFeatureFlags.www'
+  );
+});
+
 global.__WWW__ = true;
