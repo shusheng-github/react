@@ -1327,7 +1327,8 @@ function updateHostRoot(current, workInProgress, renderLanes) {
         for (let i = 0; i < mutableSourceEagerHydrationData.length; i += 2) {
           const mutableSource = ((mutableSourceEagerHydrationData[
             i
-          ]: any): MutableSource<any>);
+          ]: any));
+        // ]: any): MutableSource<any>);
           const version = mutableSourceEagerHydrationData[i + 1];
           setWorkInProgressVersion(mutableSource, version);
         }
