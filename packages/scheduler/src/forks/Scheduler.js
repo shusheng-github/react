@@ -494,6 +494,9 @@ let taskTimeoutID = -1;
 // thread, like user events. By default, it yields multiple times per frame.
 // It does not attempt to align with frame boundaries, since most tasks don't
 // need to be frame aligned; for those that do, use requestAnimationFrame.
+// 调度程序会定期中断，以防主线程上有其他工作，例如用户事件。 
+// 默认情况下，它每帧产生多次。 它不会尝试与帧边界对齐，因为大多数任务不需要帧对齐； 
+// 对于那些这样做的人，请使用 requestAnimationFrame。
 let frameInterval = frameYieldMs;
 const continuousInputInterval = continuousYieldMs;
 const maxInterval = maxYieldMs;
@@ -501,11 +504,16 @@ let startTime = -1;
 
 let needsPaint = false;
 
+// 判断是否需要中断程序，将主线程还给浏览器，使浏览器有时间渲染
 function shouldYieldToHost() {
   const timeElapsed = getCurrentTime() - startTime;
+  // 每更新一个节点，判断时间流逝是否超过5ms，如果没有超过则继续向下更新，
+  // 如果超过5ms则中断更新，等待下一帧继续更新
   if (timeElapsed < frameInterval) {
     // The main thread has only been blocked for a really short amount of time;
     // smaller than a single frame. Don't yield yet.
+    // 主线程只被阻塞了很短的时间
+    // 小于单帧的时间
     return false;
   }
 
@@ -517,20 +525,29 @@ function shouldYieldToHost() {
   // eventually yield regardless, since there could be a pending paint that
   // wasn't accompanied by a call to `requestPaint`, or other main thread tasks
   // like network events.
+  // 主线程已经被阻塞了相当长的时间。
+  // 我们可能想让出主线程的控制权，这样浏览器就可以执行高优先级的任务。
+  // 主要的任务是绘画和用户输入。如果有一个悬而未决的绘画或一个悬而未决的输入，那么我们应该让步。
+  // 但如果两者都没有，那么我们就可以在保持响应的同时减少屈服的次数。
+  // 无论怎样，我们最终都会让步，因为可能会有一个没有调用 "requestPaint "的挂起的绘画，或其他主线程任务，如网络事件。
   if (enableIsInputPending) {
     if (needsPaint) {
       // There's a pending paint (signaled by `requestPaint`). Yield now.
       return true;
     }
+    // 如果剩余时间小于50ms
     if (timeElapsed < continuousInputInterval) {
       // We haven't blocked the thread for that long. Only yield if there's a
       // pending discrete input (e.g. click). It's OK if there's pending
       // continuous input (e.g. mouseover).
+      // 我们已经很久没有阻塞线程了。 仅当有待处理的离散输入（例如单击）时才产生。 如果有未决的连续输入（例如鼠标悬停），则可以。
       if (isInputPending !== null) {
         return isInputPending();
       }
+      // 如果剩余时间小于300ms
     } else if (timeElapsed < maxInterval) {
       // Yield if there's either a pending discrete or continuous input.
+      // 如果有待处理的连续输入，例如一直在input输入则走该分支
       if (isInputPending !== null) {
         return isInputPending(continuousOptions);
       }
@@ -538,11 +555,13 @@ function shouldYieldToHost() {
       // We've blocked the thread for a long time. Even if there's no pending
       // input, there may be some other scheduled work that we don't know about,
       // like a network event. Yield now.
+      // 我们已经阻塞线程很长时间了。 即使没有待处理的输入，也可能有一些我们不知道的其他预定工作，例如网络事件。 现在中断。
       return true;
     }
   }
 
   // `isInputPending` isn't available. Yield now.
+  // `isInputPending` 不可用的情况下，中断
   return true;
 }
 
@@ -559,6 +578,7 @@ function requestPaint() {
   // Since we yield every frame regardless, `requestPaint` has no effect.
 }
 
+// 根据浏览器动态分配时间
 function forceFrameRate(fps) {
   if (fps < 0 || fps > 125) {
     // Using console['error'] to evade Babel and ESLint
@@ -614,7 +634,7 @@ const performWorkUntilDeadline = () => {
   }
   // Yielding to the browser will give it a chance to paint, so we can
   // reset this.
-  // 屈服于浏览器将给它一个绘制的机会，所以我们可以重置它。
+  // 让步于浏览器将给它一个绘制的机会，所以我们可以重置它。
   needsPaint = false;
 };
 

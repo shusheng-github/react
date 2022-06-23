@@ -35,14 +35,18 @@ export const TotalLanes = 31;
 export const NoLanes: Lanes = /*                        */ 0b0000000000000000000000000000000;
 export const NoLane: Lane = /*                          */ 0b0000000000000000000000000000000;
 
+// 同步
 export const SyncLane: Lane = /*                        */ 0b0000000000000000000000000000001;
 
+// 连续事件
 export const InputContinuousHydrationLane: Lane = /*    */ 0b0000000000000000000000000000010;
 export const InputContinuousLane: Lane = /*             */ 0b0000000000000000000000000000100;
 
+// 默认
 export const DefaultHydrationLane: Lane = /*            */ 0b0000000000000000000000000001000;
 export const DefaultLane: Lane = /*                     */ 0b0000000000000000000000000010000;
 
+// 过渡
 const TransitionHydrationLane: Lane = /*                */ 0b0000000000000000000000000100000;
 const TransitionLanes: Lanes = /*                       */ 0b0000000001111111111111111000000;
 const TransitionLane1: Lane = /*                        */ 0b0000000000000000000000001000000;
@@ -62,6 +66,7 @@ const TransitionLane14: Lane = /*                       */ 0b0000000000010000000
 const TransitionLane15: Lane = /*                       */ 0b0000000000100000000000000000000;
 const TransitionLane16: Lane = /*                       */ 0b0000000001000000000000000000000;
 
+// 重试
 const RetryLanes: Lanes = /*                            */ 0b0000111110000000000000000000000;
 const RetryLane1: Lane = /*                             */ 0b0000000010000000000000000000000;
 const RetryLane2: Lane = /*                             */ 0b0000000100000000000000000000000;
@@ -78,6 +83,7 @@ const NonIdleLanes: Lanes = /*                          */ 0b0001111111111111111
 export const IdleHydrationLane: Lane = /*               */ 0b0010000000000000000000000000000;
 export const IdleLane: Lane = /*                        */ 0b0100000000000000000000000000000;
 
+// 离屏事件
 export const OffscreenLane: Lane = /*                   */ 0b1000000000000000000000000000000;
 
 // This function is used for the experimental timeline (react-devtools-timeline)
