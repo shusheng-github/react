@@ -1,20 +1,32 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect, useLayoutEffect, useTransition} from 'react';
 
 function App() {
 	const [state, updateState] = useState(0);
-	const a = <div key='a'>shu sheng---a</div>;
-	const b = <div key='b'>shu sheng---b</div>;
-	// const len = 3000;
+	const [count, updateCount] = useState(1);
+  const [isPending, startTransition] = useTransition();
+	// const len = 4000; 
+  const handleClick = () => {
+    
+  }
+  useEffect(() => {
+    // updateCount(3000);
+    startTransition(() => {
+      updateCount(3000);
+    })
+  }, [])
 	return (
-		<div className='App' onClick={() => updateState((state) => state + 1)}>
-			{/* <ul>
-				{Array(len)
+		// <div className='App' onClick={() => updateState((state) => state + 1)}>
+		<div className='App' onClick={() => handleClick()}>
+    <input type="text" />
+			<ul>
+      <li>数量{count}</li>
+				{Array(count)
 					.fill(0)
 					.map((_, i) => (
 						<li key={i}>{i}</li>
 					))}
-			</ul> */}
-			{state % 2 ? a : b}
+			</ul>
+			{/* {state % 2 ? a : b} */}
 			{/* <header className="App-header" onClick={() => updateState((state) => state + 1)}>
         <img src={logo} className="App-logo" alt="logo" />
         <p>

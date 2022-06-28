@@ -9,7 +9,6 @@ const generateReactAlias = () => {
   const reactPkgs = readdirSync(reactLibraryRelativePath)
   const alias = {}
   reactPkgs.forEach((filename) => {
-    console.log('filename :>> ', filename);
     alias[filename] = resolve(`${reactLibraryRelativePath}/${filename}`)
   })
   return alias
