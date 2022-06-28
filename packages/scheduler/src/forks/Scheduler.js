@@ -143,7 +143,7 @@ function handleTimeout(currentTime) {
     //  判断有没有过期的任务，
     if (peek(taskQueue) !== null) {
       isHostCallbackScheduled = true;
-      // 开启调度任务
+      // 有过期的任务，则开启调度任务
       requestHostCallback(flushWork);
     } else {
       const firstTimer = peek(timerQueue);
@@ -269,6 +269,7 @@ function workLoop(hasTimeRemaining, initialTime) {
 }
 
 // 接受一个优先级和一个回调函数
+// 将schedule的优先级和react的优先级lane模型相结合
 function unstable_runWithPriority(priorityLevel, eventHandler) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -578,7 +579,6 @@ function requestPaint() {
 
   // Since we yield every frame regardless, `requestPaint` has no effect.
 }
-
 // 根据浏览器动态分配时间
 function forceFrameRate(fps) {
   if (fps < 0 || fps > 125) {
