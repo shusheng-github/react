@@ -115,6 +115,7 @@ ReactDOMRoot.prototype.unmount = function(): void {
   });
 };
 
+// react18 createRoot的起点函数
 export function createRoot(
   container: Container,
   options?: CreateRootOptions,
