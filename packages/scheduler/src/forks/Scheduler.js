@@ -11,6 +11,11 @@
 import {
   enableSchedulerDebugging,
   enableProfiling,
+  enableIsInputPending,
+  enableIsInputPendingContinuous,
+  frameYieldMs,
+  continuousYieldMs,
+  maxYieldMs,
 } from '../SchedulerFeatureFlags';
 
 import {push, pop, peek} from '../SchedulerMinHeap';
@@ -35,8 +40,6 @@ import {
   stopLoggingProfilingEvents,
   startLoggingProfilingEvents,
 } from '../SchedulerProfiling';
-
-import {enableIsInputPending} from '../SchedulerFeatureFlags';
 
 let getCurrentTime;
 const hasPerformanceNow =
@@ -80,7 +83,7 @@ var isSchedulerPaused = false;
 var currentTask = null;
 var currentPriorityLevel = NormalPriority;
 
-// This is set while performing work, to prevent re-entrancy.
+// This is set while performing work, to prevent re-entrance.
 var isPerformingWork = false;
 
 var isHostCallbackScheduled = false;
@@ -93,8 +96,17 @@ const localClearTimeout =
 const localSetImmediate =
   typeof setImmediate !== 'undefined' ? setImmediate : null; // IE and Node.js + jsdom
 
-// 简单来说，advanceTimers 的作用是将 timerTask 中已经到了执行时间的 task，push 到 taskQueue
+  // 简单来说，advanceTimers 的作用是将 timerTask 中已经到了执行时间的 task，push 到 taskQueue
 // 所以这是一个根据当前时间整理两个 Queue 中时序任务的函数，会在 Scheduler 的运作过程中反复调用
+const isInputPending =
+  typeof navigator !== 'undefined' &&
+  navigator.scheduling !== undefined &&
+  navigator.scheduling.isInputPending !== undefined
+    ? navigator.scheduling.isInputPending.bind(navigator.scheduling)
+    : null;
+
+const continuousOptions = {includeContinuous: enableIsInputPendingContinuous};
+
 function advanceTimers(currentTime) {
   // Check for tasks that are no longer delayed and add them to the queue.
   // 检查不再延迟的任务并将它们添加到队列中。
@@ -131,7 +143,7 @@ function handleTimeout(currentTime) {
     //  判断有没有过期的任务，
     if (peek(taskQueue) !== null) {
       isHostCallbackScheduled = true;
-      // 开启调度任务
+      // 有过期的任务，则开启调度任务
       requestHostCallback(flushWork);
     } else {
       const firstTimer = peek(timerQueue);
@@ -256,6 +268,8 @@ function workLoop(hasTimeRemaining, initialTime) {
   }
 }
 
+// 接受一个优先级和一个回调函数
+// 将schedule的优先级和react的优先级lane模型相结合
 function unstable_runWithPriority(priorityLevel, eventHandler) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -326,7 +340,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
   // 获取当前时间
   var currentTime = getCurrentTime();
 
-  // 开始啥时间
+  // 开始时间
   // 声明 startTime，startTime 是任务的预期开始时间
   var startTime;
   // 以下是对 options 入参的处理
@@ -418,7 +432,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
     // else 里处理的是当前时间大于 startTime 的情况，说明这个任务已过期
     newTask.sortIndex = expirationTime;
     // 把任务放入taskQueue 
-    // taskQueue 存储的都是过期任务
+    // taskQueue 存储的都是过期任务，需立即执行的任务
     push(taskQueue, newTask);
     if (enableProfiling) {
       markTaskStart(newTask, currentTime);
@@ -482,51 +496,75 @@ let taskTimeoutID = -1;
 // thread, like user events. By default, it yields multiple times per frame.
 // It does not attempt to align with frame boundaries, since most tasks don't
 // need to be frame aligned; for those that do, use requestAnimationFrame.
-let yieldInterval = 5;
-let deadline = 0;
+// 调度程序会定期中断，以防主线程上有其他工作，例如用户事件。 
+// 默认情况下，它每帧产生多次。 它不会尝试与帧边界对齐，因为大多数任务不需要帧对齐； 
+// 对于那些这样做的人，请使用 requestAnimationFrame。
+let frameInterval = frameYieldMs;
+const continuousInputInterval = continuousYieldMs;
+const maxInterval = maxYieldMs;
+let startTime = -1;
 
-// TODO: Make this configurable
-// TODO: Adjust this based on priority?
-const maxYieldInterval = 300;
 let needsPaint = false;
 
+// 判断是否需要中断程序，将主线程还给浏览器，使浏览器有时间渲染
 function shouldYieldToHost() {
-  if (
-    enableIsInputPending &&
-    navigator !== undefined &&
-    navigator.scheduling !== undefined &&
-    navigator.scheduling.isInputPending !== undefined
-  ) {
-    const scheduling = navigator.scheduling;
-    const currentTime = getCurrentTime();
-    if (currentTime >= deadline) {
-      // There's no time left. We may want to yield control of the main
-      // thread, so the browser can perform high priority tasks. The main ones
-      // are painting and user input. If there's a pending paint or a pending
-      // input, then we should yield. But if there's neither, then we can
-      // yield less often while remaining responsive. We'll eventually yield
-      // regardless, since there could be a pending paint that wasn't
-      // accompanied by a call to `requestPaint`, or other main thread tasks
-      // like network events.
-      // navigator.scheduling.isInputPending() 用来判断当前是否有用户的输入操作
-      if (needsPaint || scheduling.isInputPending()) {
-        // There is either a pending paint or a pending input.
-        return true;
-      }
-      // There's no pending input. Only yield if we've reached the max
-      // yield interval.
-      // isInputPending 不可用的情况下，直接计算时间差值是否满足
-      const timeElapsed = currentTime - (deadline - yieldInterval);
-      return timeElapsed >= maxYieldInterval;
-    } else {
-      // There's still time left in the frame.
-      return false;
-    }
-  } else {
-    // `isInputPending` is not available. Since we have no way of knowing if
-    // there's pending input, always yield at the end of the frame.
-    return getCurrentTime() >= deadline;
+  const timeElapsed = getCurrentTime() - startTime;
+  // 每更新一个节点，判断时间流逝是否超过5ms，如果没有超过则继续向下更新，
+  // 如果超过5ms则中断更新，等待下一帧继续更新
+  if (timeElapsed < frameInterval) {
+    // The main thread has only been blocked for a really short amount of time;
+    // smaller than a single frame. Don't yield yet.
+    // 主线程只被阻塞了很短的时间
+    // 小于单帧的时间
+    return false;
   }
+
+  // The main thread has been blocked for a non-negligible amount of time. We
+  // may want to yield control of the main thread, so the browser can perform
+  // high priority tasks. The main ones are painting and user input. If there's
+  // a pending paint or a pending input, then we should yield. But if there's
+  // neither, then we can yield less often while remaining responsive. We'll
+  // eventually yield regardless, since there could be a pending paint that
+  // wasn't accompanied by a call to `requestPaint`, or other main thread tasks
+  // like network events.
+  // 主线程已经被阻塞了相当长的时间。
+  // 我们可能想让出主线程的控制权，这样浏览器就可以执行高优先级的任务。
+  // 主要的任务是绘画和用户输入。如果有一个悬而未决的绘画或一个悬而未决的输入，那么我们应该让步。
+  // 但如果两者都没有，那么我们就可以在保持响应的同时减少屈服的次数。
+  // 无论怎样，我们最终都会让步，因为可能会有一个没有调用 "requestPaint "的挂起的绘画，或其他主线程任务，如网络事件。
+  if (enableIsInputPending) {
+    if (needsPaint) {
+      // There's a pending paint (signaled by `requestPaint`). Yield now.
+      return true;
+    }
+    // 如果剩余时间小于50ms
+    if (timeElapsed < continuousInputInterval) {
+      // We haven't blocked the thread for that long. Only yield if there's a
+      // pending discrete input (e.g. click). It's OK if there's pending
+      // continuous input (e.g. mouseover).
+      // 我们已经很久没有阻塞线程了。 仅当有待处理的离散输入（例如单击）时才产生。 如果有未决的连续输入（例如鼠标悬停），则可以。
+      if (isInputPending !== null) {
+        return isInputPending();
+      }
+      // 如果剩余时间小于300ms
+    } else if (timeElapsed < maxInterval) {
+      // Yield if there's either a pending discrete or continuous input.
+      // 如果有待处理的连续输入，例如一直在input输入则走该分支
+      if (isInputPending !== null) {
+        return isInputPending(continuousOptions);
+      }
+    } else {
+      // We've blocked the thread for a long time. Even if there's no pending
+      // input, there may be some other scheduled work that we don't know about,
+      // like a network event. Yield now.
+      // 我们已经阻塞线程很长时间了。 即使没有待处理的输入，也可能有一些我们不知道的其他预定工作，例如网络事件。 现在中断。
+      return true;
+    }
+  }
+
+  // `isInputPending` isn't available. Yield now.
+  // `isInputPending` 不可用的情况下，中断
+  return true;
 }
 
 function requestPaint() {
@@ -541,7 +579,7 @@ function requestPaint() {
 
   // Since we yield every frame regardless, `requestPaint` has no effect.
 }
-
+// 根据浏览器动态分配时间
 function forceFrameRate(fps) {
   if (fps < 0 || fps > 125) {
     // Using console['error'] to evade Babel and ESLint
@@ -552,10 +590,10 @@ function forceFrameRate(fps) {
     return;
   }
   if (fps > 0) {
-    yieldInterval = Math.floor(1000 / fps);
+    frameInterval = Math.floor(1000 / fps);
   } else {
     // reset the framerate
-    yieldInterval = 5;
+    frameInterval = frameYieldMs;
   }
 }
 
@@ -563,12 +601,9 @@ const performWorkUntilDeadline = () => {
   // scheduledHostCallback 来自于 requestHostCallback 中的 callback
   if (scheduledHostCallback !== null) {
     const currentTime = getCurrentTime();
-    // Yield after `yieldInterval` ms, regardless of where we are in the vsync
-    // cycle. This means there's always time remaining at the beginning of
-    // the message event.
-    // yieldInterval根据计算得来
-    // 在 `yieldInterval` ms 后产量，无论我们在 vsync 周期中的哪个位置。 这意味着在消息事件开始时总是有剩余时间。
-    deadline = currentTime + yieldInterval;
+    // Keep track of the start time so we can measure how long the main thread
+    // has been blocked.
+    startTime = currentTime;
     const hasTimeRemaining = true;
 
     // If a scheduler task throws, exit the current browser task so the
@@ -600,7 +635,7 @@ const performWorkUntilDeadline = () => {
   }
   // Yielding to the browser will give it a chance to paint, so we can
   // reset this.
-  // 屈服于浏览器将给它一个绘制的机会，所以我们可以重置它。
+  // 让步于浏览器将给它一个绘制的机会，所以我们可以重置它。
   needsPaint = false;
 };
 

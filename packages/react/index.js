@@ -7,7 +7,7 @@
  * @flow
  */
 
-// Keep in sync with https://github.com/facebook/flow/blob/master/lib/react.js
+// Keep in sync with https://github.com/facebook/flow/blob/main/lib/react.js
 export type StatelessFunctionalComponent<
   P,
 > = React$StatelessFunctionalComponent<P>;
@@ -29,6 +29,10 @@ export type ElementRef<C> = React$ElementRef<C>;
 export type Config<Props, DefaultProps> = React$Config<Props, DefaultProps>;
 export type ChildrenArray<+T> = $ReadOnlyArray<ChildrenArray<T>> | T;
 
+// 非源码，本地debug源码需要
+import * as React from './src/React'
+export default React
+
 // Export all exports so that they're available in tests.
 // We can't use export * from in Flow for some reason.
 export {
@@ -48,6 +52,7 @@ export {
   createFactory,
   createMutableSource,
   createRef,
+  createServerContext,
   forwardRef,
   isValidElement,
   lazy,
@@ -58,18 +63,22 @@ export {
   unstable_LegacyHidden,
   unstable_Offscreen,
   unstable_Scope,
+  unstable_TracingMarker,
+  unstable_getCacheSignal,
   unstable_getCacheForType,
   unstable_useCacheRefresh,
-  unstable_useOpaqueIdentifier,
+  useId,
   useCallback,
   useContext,
   useDebugValue,
   useDeferredValue,
   useEffect,
   useImperativeHandle,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useMutableSource,
+  useSyncExternalStore,
   useReducer,
   useRef,
   useState,

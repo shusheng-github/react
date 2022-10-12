@@ -11,13 +11,14 @@ import type {AnyNativeEvent} from '../events/PluginModuleType';
 import type {FiberRoot} from 'react-reconciler/src/ReactInternalTypes';
 import type {Container, SuspenseInstance} from '../client/ReactDOMHostConfig';
 import type {DOMEventName} from '../events/DOMEventNames';
-
+import {enableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay} from 'shared/ReactFeatureFlags';
 import {
-  isReplayableDiscreteEvent,
+  isDiscreteEventThatRequiresHydration,
   queueDiscreteEvent,
   hasQueuedDiscreteEvents,
   clearIfContinuousEvent,
   queueIfContinuousEvent,
+  attemptSynchronousHydration,
 } from './ReactDOMEventReplaying';
 import {
   getNearestMountedFiber,
@@ -28,7 +29,10 @@ import {HostRoot, SuspenseComponent} from 'react-reconciler/src/ReactWorkTags';
 import {type EventSystemFlags, IS_CAPTURE_PHASE} from './EventSystemFlags';
 
 import getEventTarget from './getEventTarget';
-import {getClosestInstanceFromNode} from '../client/ReactDOMComponentTree';
+import {
+  getInstanceFromNode,
+  getClosestInstanceFromNode,
+} from '../client/ReactDOMComponentTree';
 
 import {dispatchEventForPluginEventSystem} from './DOMPluginEventSystem';
 
@@ -49,6 +53,7 @@ import {
   setCurrentUpdatePriority,
 } from 'react-reconciler/src/ReactEventPriorities';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
+import {isRootDehydrated} from 'react-reconciler/src/ReactFiberShellHydration';
 
 const {ReactCurrentBatchConfig} = ReactSharedInternals;
 
@@ -119,7 +124,7 @@ function dispatchDiscreteEvent(
 ) {
   const previousPriority = getCurrentUpdatePriority();
   const prevTransition = ReactCurrentBatchConfig.transition;
-  ReactCurrentBatchConfig.transition = 0;
+  ReactCurrentBatchConfig.transition = null;
   try {
     setCurrentUpdatePriority(DiscreteEventPriority);
     dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent);
@@ -137,7 +142,7 @@ function dispatchContinuousEvent(
 ) {
   const previousPriority = getCurrentUpdatePriority();
   const prevTransition = ReactCurrentBatchConfig.transition;
-  ReactCurrentBatchConfig.transition = 0;
+  ReactCurrentBatchConfig.transition = null;
   try {
     setCurrentUpdatePriority(ContinuousEventPriority);
     dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent);
@@ -156,7 +161,29 @@ export function dispatchEvent(
   if (!_enabled) {
     return;
   }
+  if (enableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay) {
+    dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay(
+      domEventName,
+      eventSystemFlags,
+      targetContainer,
+      nativeEvent,
+    );
+  } else {
+    dispatchEventOriginal(
+      domEventName,
+      eventSystemFlags,
+      targetContainer,
+      nativeEvent,
+    );
+  }
+}
 
+function dispatchEventOriginal(
+  domEventName: DOMEventName,
+  eventSystemFlags: EventSystemFlags,
+  targetContainer: EventTarget,
+  nativeEvent: AnyNativeEvent,
+) {
   // TODO: replaying capture phase events is currently broken
   // because we used to do it during top-level native bubble handlers
   // but now we use different bubble and capture handlers.
@@ -167,7 +194,7 @@ export function dispatchEvent(
   if (
     allowReplay &&
     hasQueuedDiscreteEvents() &&
-    isReplayableDiscreteEvent(domEventName)
+    isDiscreteEventThatRequiresHydration(domEventName)
   ) {
     // If we already have a queue of discrete events, and this is another discrete
     // event, then we can't dispatch it regardless of its target, since they
@@ -182,15 +209,20 @@ export function dispatchEvent(
     return;
   }
 
-  const blockedOn = attemptToDispatchEvent(
+  const blockedOn = findInstanceBlockingEvent(
     domEventName,
     eventSystemFlags,
     targetContainer,
     nativeEvent,
   );
-
   if (blockedOn === null) {
-    // We successfully dispatched this event.
+    dispatchEventForPluginEventSystem(
+      domEventName,
+      eventSystemFlags,
+      nativeEvent,
+      return_targetInst,
+      targetContainer,
+    );
     if (allowReplay) {
       clearIfContinuousEvent(domEventName, nativeEvent);
     }
@@ -198,7 +230,7 @@ export function dispatchEvent(
   }
 
   if (allowReplay) {
-    if (isReplayableDiscreteEvent(domEventName)) {
+    if (isDiscreteEventThatRequiresHydration(domEventName)) {
       // This this to be replayed later once the target is available.
       queueDiscreteEvent(
         blockedOn,
@@ -236,14 +268,105 @@ export function dispatchEvent(
   );
 }
 
-// Attempt dispatching an event. Returns a SuspenseInstance or Container if it's blocked.
-export function attemptToDispatchEvent(
+function dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay(
+  domEventName: DOMEventName,
+  eventSystemFlags: EventSystemFlags,
+  targetContainer: EventTarget,
+  nativeEvent: AnyNativeEvent,
+) {
+  let blockedOn = findInstanceBlockingEvent(
+    domEventName,
+    eventSystemFlags,
+    targetContainer,
+    nativeEvent,
+  );
+  if (blockedOn === null) {
+    dispatchEventForPluginEventSystem(
+      domEventName,
+      eventSystemFlags,
+      nativeEvent,
+      return_targetInst,
+      targetContainer,
+    );
+    clearIfContinuousEvent(domEventName, nativeEvent);
+    return;
+  }
+
+  if (
+    queueIfContinuousEvent(
+      blockedOn,
+      domEventName,
+      eventSystemFlags,
+      targetContainer,
+      nativeEvent,
+    )
+  ) {
+    nativeEvent.stopPropagation();
+    return;
+  }
+  // We need to clear only if we didn't queue because
+  // queueing is accumulative.
+  clearIfContinuousEvent(domEventName, nativeEvent);
+
+  if (
+    eventSystemFlags & IS_CAPTURE_PHASE &&
+    isDiscreteEventThatRequiresHydration(domEventName)
+  ) {
+    while (blockedOn !== null) {
+      const fiber = getInstanceFromNode(blockedOn);
+      if (fiber !== null) {
+        attemptSynchronousHydration(fiber);
+      }
+      const nextBlockedOn = findInstanceBlockingEvent(
+        domEventName,
+        eventSystemFlags,
+        targetContainer,
+        nativeEvent,
+      );
+      if (nextBlockedOn === null) {
+        dispatchEventForPluginEventSystem(
+          domEventName,
+          eventSystemFlags,
+          nativeEvent,
+          return_targetInst,
+          targetContainer,
+        );
+      }
+      if (nextBlockedOn === blockedOn) {
+        break;
+      }
+      blockedOn = nextBlockedOn;
+    }
+    if (blockedOn !== null) {
+      nativeEvent.stopPropagation();
+    }
+    return;
+  }
+
+  // This is not replayable so we'll invoke it but without a target,
+  // in case the event system needs to trace it.
+  dispatchEventForPluginEventSystem(
+    domEventName,
+    eventSystemFlags,
+    nativeEvent,
+    null,
+    targetContainer,
+  );
+}
+
+export let return_targetInst = null;
+
+// Returns a SuspenseInstance or Container if it's blocked.
+// The return_targetInst field above is conceptually part of the return value.
+export function findInstanceBlockingEvent(
   domEventName: DOMEventName,
   eventSystemFlags: EventSystemFlags,
   targetContainer: EventTarget,
   nativeEvent: AnyNativeEvent,
 ): null | Container | SuspenseInstance {
   // TODO: Warn if _enabled is false.
+
+  return_targetInst = null;
 
   const nativeEventTarget = getEventTarget(nativeEvent);
   let targetInst = getClosestInstanceFromNode(nativeEventTarget);
@@ -270,7 +393,7 @@ export function attemptToDispatchEvent(
         targetInst = null;
       } else if (tag === HostRoot) {
         const root: FiberRoot = nearestMounted.stateNode;
-        if (root.hydrate) {
+        if (isRootDehydrated(root)) {
           // If this happens during a replay something went wrong and it might block
           // the whole system.
           return getContainerFromFiber(nearestMounted);
@@ -285,13 +408,7 @@ export function attemptToDispatchEvent(
       }
     }
   }
-  dispatchEventForPluginEventSystem(
-    domEventName,
-    eventSystemFlags,
-    nativeEvent,
-    targetInst,
-    targetContainer,
-  );
+  return_targetInst = targetInst;
   // We're not blocked on anything.
   return null;
 }
@@ -327,6 +444,7 @@ export function getEventPriority(domEventName: DOMEventName): * {
     case 'pointerup':
     case 'ratechange':
     case 'reset':
+    case 'resize':
     case 'seeked':
     case 'submit':
     case 'touchcancel':

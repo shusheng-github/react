@@ -12,6 +12,7 @@
 // because Rollup would use dynamic dispatch for CommonJS interop named imports.
 // When we switch to ESM, we can delete this module.
 import * as Scheduler from 'scheduler';
+console.log('Scheduler', Scheduler)
 
 export const scheduleCallback = Scheduler.unstable_scheduleCallback;
 export const cancelCallback = Scheduler.unstable_cancelCallback;
@@ -26,3 +27,13 @@ export const NormalPriority = Scheduler.unstable_NormalPriority;
 export const LowPriority = Scheduler.unstable_LowPriority;
 export const IdlePriority = Scheduler.unstable_IdlePriority;
 export type SchedulerCallback = (isSync: boolean) => SchedulerCallback | null;
+
+// this doesn't actually exist on the scheduler, but it *does*
+// on scheduler/unstable_mock, which we'll need for internal testing
+// export const unstable_yieldValue = Scheduler.unstable_yieldValue;
+// export const unstable_setDisableYieldValue =
+//   Scheduler.unstable_setDisableYieldValue;
+
+// 非源码，本地debug源码需要
+export const unstable_yieldValue = 5
+export const unstable_setDisableYieldValue = 5
