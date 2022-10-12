@@ -82,6 +82,7 @@ export function enqueueConcurrentHookUpdate<S, A>(
     update.next = update;
     // At the end of the current render, this queue's interleaved updates will
     // be transferred to the pending queue.
+    // 在当前渲染结束时，这个队列的交错更新将被转移到待处理队列中。
     pushConcurrentUpdateQueue(queue);
   } else {
     update.next = interleaved.next;

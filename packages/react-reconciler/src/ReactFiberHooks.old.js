@@ -641,13 +641,13 @@ export function resetHooksAfterThrow(): void {
 // 每一个hooks 初始化都会执行 mountWorkInProgressHook
 function mountWorkInProgressHook(): Hook {
   const hook: Hook = {
-    memoizedState: null,
+    memoizedState: null,  //保存hook对应的state
 
-    baseState: null,
+    baseState: null, // update执行前的初始state
     baseQueue: null,
-    queue: null,
+    queue: null,  // 保存update的queue
 
-    next: null,
+    next: null, //与下一个hooks形成单向无环链表
   };
 
   if (workInProgressHook === null) {
@@ -2233,6 +2233,7 @@ function dispatchReducerAction<S, A>(
   };
 
   if (isRenderPhaseUpdate(fiber)) {
+    // 初始化update，创建一个环装链表
     enqueueRenderPhaseUpdate(queue, update);
   } else {
     const root = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
@@ -2272,6 +2273,7 @@ function dispatchSetState<S, A>(
   };
 
   if (isRenderPhaseUpdate(fiber)) {
+    // 初始化update，创建一个环装链表
     enqueueRenderPhaseUpdate(queue, update);
   } else {
     const alternate = fiber.alternate;
@@ -2282,6 +2284,7 @@ function dispatchSetState<S, A>(
       // The queue is currently empty, which means we can eagerly compute the
       // next state before entering the render phase. If the new state is the
       // same as the current state, we may be able to bail out entirely.
+      // 目前队列是空的，这意味着我们可以在进入渲染阶段之前急切地计算下一个状态。如果新的状态是 与当前状态相同，我们就可以完全跳出。
       const lastRenderedReducer = queue.lastRenderedReducer;  
       if (lastRenderedReducer !== null) {
         let prevDispatcher;
@@ -2341,6 +2344,7 @@ function isRenderPhaseUpdate(fiber: Fiber) {
   );
 }
 
+// 初始化update，创建一个环装链表
 function enqueueRenderPhaseUpdate<S, A>(
   queue: UpdateQueue<S, A>,
   update: Update<S, A>,
