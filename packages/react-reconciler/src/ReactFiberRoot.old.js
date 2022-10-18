@@ -50,10 +50,10 @@ function FiberRootNode(
   identifierPrefix,
   onRecoverableError,
 ) {
-  this.tag = tag;
-  this.containerInfo = containerInfo;
+  this.tag = tag; // fiber节点标识
+  this.containerInfo = containerInfo; // root的dom根节点，即<div id="root"></div>
   this.pendingChildren = null;
-  this.current = null;
+  this.current = null; // 当前fiber节点
   this.pingCache = null;
   this.finishedWork = null;
   this.timeoutHandle = noTimeout;
@@ -141,6 +141,7 @@ export function createFiberRoot(
   onRecoverableError: null | ((error: mixed) => void),
   transitionCallbacks: null | TransitionTracingCallbacks,
 ): FiberRoot {
+  // 在此生成root，即FiberRootNode，在此生成FiberRootNode之后，会生成该节点单元对应fiber，然后与FiberRootNode关联起来。
   const root: FiberRoot = (new FiberRootNode(
     containerInfo,
     tag,

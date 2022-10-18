@@ -1714,6 +1714,7 @@ function renderRootSync(root: FiberRoot, lanes: Lanes) {
     }
 
     workInProgressTransitions = getTransitionsForLanes(root, lanes);
+    // 生成workInProgress,并将workInProgress暴露在全局，在workLoopSync阶段可以获取到，从而继续生成fiber节点
     prepareFreshStack(root, lanes);
   }
 
