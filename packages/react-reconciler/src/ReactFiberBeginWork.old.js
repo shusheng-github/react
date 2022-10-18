@@ -3741,6 +3741,7 @@ function beginWork(
       );
     }
   }
+  debugger;
   //  current 节点不为空的情况下，会加一道辨识，看看是否有更新逻辑要处理
   if (current !== null) {
     // 获取新旧 props
