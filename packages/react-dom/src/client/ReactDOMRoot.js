@@ -163,6 +163,7 @@ ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount = funct
   }
 };
 
+// react18 createRoot的起点函数
 export function createRoot(
   container: Element | Document | DocumentFragment,
   options?: CreateRootOptions,
