@@ -2,14 +2,20 @@ import React, {useState} from 'react';
 import Init from './components/init';
 
 function App() {
-  const [state, updateState] = useState(0);
-  const handleClick = () => {
-    updateCount(state => state + 1);
-  };
   return (
-    <div className="App" onClick={handleClick}>
-      <div>state: {state}</div>
-      <Init></Init>
+    <div className="App">
+      <header>
+        className="App-header"
+        <img
+          src={logo}
+          className="App-logo"
+          alt="logo"
+          style={{width: '200px', height: 'auto'}}
+        />
+        <p>
+          <code>src/App.js</code> and save to reload.
+        </p>
+      </header>
     </div>
   );
 }

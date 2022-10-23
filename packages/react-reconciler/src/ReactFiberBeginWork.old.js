@@ -3724,7 +3724,7 @@ function beginWork(
   workInProgress: Fiber,
   renderLanes: Lanes,
 ): Fiber | null {
-  debugger;
+  // debugger;
   if (__DEV__) {
     if (workInProgress._debugNeedsRemount && current !== null) {
       // This will restart the begin phase with a new fiber.
@@ -3742,7 +3742,7 @@ function beginWork(
       );
     }
   }
-  debugger;
+  // debugger;
   //  current 节点不为空的情况下，会加一道辨识，看看是否有更新逻辑要处理
   if (current !== null) {
     // 获取新旧 props

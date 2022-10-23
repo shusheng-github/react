@@ -221,7 +221,7 @@ export function createRoot(
       transitionCallbacks = options.transitionCallbacks;
     }
   }
-  console.log('ConcurrentRoot', ConcurrentRoot)
+  debugger;
   const root = createContainer(
     container,
     ConcurrentRoot,
@@ -238,6 +238,7 @@ export function createRoot(
     container.nodeType === COMMENT_NODE
       ? (container.parentNode: any)
       : container;
+  // 事件合成入口
   listenToAllSupportedEvents(rootContainerElement);
 
   return new ReactDOMRoot(root);
