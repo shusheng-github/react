@@ -1,18 +1,18 @@
-const path = require('path')
-const { readdirSync } = require('fs')
-const HtmlWebPackPlugin = require('html-webpack-plugin')
-const { DefinePlugin } = require('webpack')
+const path = require('path');
+const {readdirSync} = require('fs');
+const HtmlWebPackPlugin = require('html-webpack-plugin');
+const {DefinePlugin} = require('webpack');
 
-const resolve = (target) => path.join(__dirname, target)
+const resolve = target => path.join(__dirname, target);
 const generateReactAlias = () => {
-  const reactLibraryRelativePath = '../packages'
-  const reactPkgs = readdirSync(reactLibraryRelativePath)
-  const alias = {}
-  reactPkgs.forEach((filename) => {
-    alias[filename] = resolve(`${reactLibraryRelativePath}/${filename}`)
-  })
-  return alias
-}
+  const reactLibraryRelativePath = '../packages';
+  const reactPkgs = readdirSync(reactLibraryRelativePath);
+  const alias = {};
+  reactPkgs.forEach(filename => {
+    alias[filename] = resolve(`${reactLibraryRelativePath}/${filename}`);
+  });
+  return alias;
+};
 
 module.exports = {
   entry: ['./src/index.js'],
@@ -42,6 +42,10 @@ module.exports = {
           },
         },
       },
+      {
+        test: /\.jpg|png|webp|jpeg$/,
+        loader: 'file-loader',
+      }
     ],
   },
   resolve: {
@@ -57,7 +61,7 @@ module.exports = {
       __PROFILE__: false,
       __EXPERIMENTAL__: true,
       __UMD__: true,
-      __VARIANT__: false
+      __VARIANT__: false,
     }),
   ],
   devServer: {
@@ -67,4 +71,4 @@ module.exports = {
   },
   mode: 'development',
   devtool: 'source-map',
-}
+};
