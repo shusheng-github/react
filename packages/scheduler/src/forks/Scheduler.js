@@ -205,6 +205,7 @@ function flushWork(hasTimeRemaining, initialTime) {
 // 这个 workLoop 是调度中的 workLoop，不要把它和调和中的 workLoop 弄混淆了。
 // workLoop 会依次更新过期任务队列中的任务。到此为止，完成整个调度过程。
 function workLoop(hasTimeRemaining, initialTime) {
+  // 保存当前时间, 用于判断任务是否过期
   let currentTime = initialTime;
   advanceTimers(currentTime);
   // 获取任务列表中的第一个（优先级最高的任务）
@@ -216,8 +217,8 @@ function workLoop(hasTimeRemaining, initialTime) {
     if (
       currentTask.expirationTime > currentTime &&
       (!hasTimeRemaining || shouldYieldToHost())
-    ) {//检查当前任务未过期的情况下 是否 当前有剩余时间 或者 需要让出给高优先级的任务
-      // This currentTask hasn't expired, and we've reached the deadline.
+    ) {
+      //检查当前任务未过期的情况下 是否 当前有剩余时间 或者 需要让出给高优先级的任务
       break;
     }
     // 真正的更新函数 callback
@@ -230,11 +231,14 @@ function workLoop(hasTimeRemaining, initialTime) {
       if (enableProfiling) {
         markTaskRun(currentTask, currentTime);
       }
-      // 执行 currentTask.callback，并将当前任务是否过期作为参数。这个 callback 会根据当前是否过期状态，缓存当前执行结果，返回未来可能会继续执行的方法：
+      // 执行 currentTask.callback，并将当前任务是否过期作为参数。
+      // 这个 callback 会根据当前是否过期状态，缓存当前执行结果，返回未来可能会继续执行的方法：
+      // 执行回调
       const continuationCallback = callback(didUserCallbackTimeout);
       // 如果callback 返回为 非函数，代表任务可能已经完成，将从 taskQueue 中 pop 掉该任务
       currentTime = getCurrentTime();
       if (typeof continuationCallback === 'function') {
+        // 产生了连续回调(如fiber树太大, 出现了中断渲染), 保留currentTask, 以便下次继续执行
         currentTask.callback = continuationCallback;
         if (enableProfiling) {
           markTaskYield(currentTask, currentTime);
@@ -244,6 +248,7 @@ function workLoop(hasTimeRemaining, initialTime) {
           markTaskCompleted(currentTask, currentTime);
           currentTask.isQueued = false;
         }
+        // 如果当前任务等于第一个任务，把currentTask移出队列
         if (currentTask === peek(taskQueue)) {
           pop(taskQueue);
         }
@@ -251,19 +256,22 @@ function workLoop(hasTimeRemaining, initialTime) {
       // 查看一下 timeQueue 中有没有 过期任务
       advanceTimers(currentTime);
     } else {
+      // 如果任务被取消(这时currentTask.callback = null), 将其移出队列
       pop(taskQueue);
     }
-    // 再一次获取任务，循环执行
+    // 再一次获取任务，循环执行，更新currentTask
     currentTask = peek(taskQueue);
   }
   // Return whether there's additional work
   if (currentTask !== null) {
+    // 如果task队列没有清空, 返回true. 等待调度中心下一次回调
     return true;
   } else {
     const firstTimer = peek(timerQueue);
     if (firstTimer !== null) {
       requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
     }
+    // task队列已经清空, 返回false.
     return false;
   }
 }

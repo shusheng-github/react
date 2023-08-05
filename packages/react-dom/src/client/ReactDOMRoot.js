@@ -221,7 +221,7 @@ export function createRoot(
       transitionCallbacks = options.transitionCallbacks;
     }
   }
-  debugger;
+  // debugger;
   const root = createContainer(
     container,
     ConcurrentRoot,
