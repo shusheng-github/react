@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -74,8 +74,9 @@ export default {
     const stateVariables = new WeakSet();
     const stableKnownValueCache = new WeakMap();
     const functionWithoutCapturedValueCache = new WeakMap();
+    const useEffectEventVariables = new WeakSet();
     function memoizeWithWeakMap(fn, map) {
-      return function(arg) {
+      return function (arg) {
         if (map.has(arg)) {
           // to verify cache hits:
           // console.log(arg.name)
@@ -157,6 +158,8 @@ export default {
       //               ^^^ true for this reference
       // const ref = useRef()
       //       ^^^ true for this reference
+      // const onStuff = useEffectEvent(() => {})
+      //       ^^^ true for this reference
       // False for everything else.
       function isStableKnownHookValue(resolved) {
         if (!isArray(resolved.defs)) {
@@ -174,7 +177,7 @@ export default {
         if (init == null) {
           return false;
         }
-        while (init.type === 'TSAsExpression') {
+        while (init.type === 'TSAsExpression' || init.type === 'AsExpression') {
           init = init.expression;
         }
         // Detect primitive constants
@@ -222,6 +225,17 @@ export default {
         const {name} = callee;
         if (name === 'useRef' && id.type === 'Identifier') {
           // useRef() return value is stable.
+          return true;
+        } else if (
+          isUseEffectEventIdentifier(callee) &&
+          id.type === 'Identifier'
+        ) {
+          for (const ref of resolved.references) {
+            if (ref !== id) {
+              useEffectEventVariables.add(ref.identifier);
+            }
+          }
+          // useEffectEvent() return value is always unstable.
           return true;
         } else if (name === 'useState' || name === 'useReducer') {
           // Only consider second value in initializing tuple stable.
@@ -604,7 +618,12 @@ export default {
 
       const declaredDependencies = [];
       const externalDependencies = new Set();
-      if (declaredDependenciesNode.type !== 'ArrayExpression') {
+      const isArrayExpression =
+        declaredDependenciesNode.type === 'ArrayExpression';
+      const isTSAsArrayExpression =
+        declaredDependenciesNode.type === 'TSAsExpression' &&
+        declaredDependenciesNode.expression.type === 'ArrayExpression';
+      if (!isArrayExpression && !isTSAsArrayExpression) {
         // If the declared dependencies are not an array expression then we
         // can't verify that the user provided the correct dependencies. Tell
         // the user this in an error.
@@ -617,7 +636,11 @@ export default {
             'dependencies.',
         });
       } else {
-        declaredDependenciesNode.elements.forEach(declaredDependencyNode => {
+        const arrayExpression = isTSAsArrayExpression
+          ? declaredDependenciesNode.expression
+          : declaredDependenciesNode;
+
+        arrayExpression.elements.forEach(declaredDependencyNode => {
           // Skip elided elements.
           if (declaredDependencyNode === null) {
             return;
@@ -633,6 +656,26 @@ export default {
                 'correct dependencies.',
             });
             return;
+          }
+          if (useEffectEventVariables.has(declaredDependencyNode)) {
+            reportProblem({
+              node: declaredDependencyNode,
+              message:
+                'Functions returned from `useEffectEvent` must not be included in the dependency array. ' +
+                `Remove \`${context.getSource(
+                  declaredDependencyNode,
+                )}\` from the list.`,
+              suggest: [
+                {
+                  desc: `Remove the dependency \`${context.getSource(
+                    declaredDependencyNode,
+                  )}\``,
+                  fix(fixer) {
+                    return fixer.removeRange(declaredDependencyNode.range);
+                  },
+                },
+              ],
+            });
           }
           // Try to normalize the declared dependency. If we can't then an error
           // will be thrown. We will catch that error and report an error.
@@ -1069,7 +1112,7 @@ export default {
               extraWarning =
                 ` You can also do a functional update '${
                   setStateRecommendation.setter
-                }(${setStateRecommendation.missingDep.substring(
+                }(${setStateRecommendation.missingDep.slice(
                   0,
                   1,
                 )} => ...)' if you only need '${
@@ -1127,7 +1170,12 @@ export default {
       const callback = node.arguments[callbackIndex];
       const reactiveHook = node.callee;
       const reactiveHookName = getNodeWithoutReactNamespace(reactiveHook).name;
-      const declaredDependenciesNode = node.arguments[callbackIndex + 1];
+      const maybeNode = node.arguments[callbackIndex + 1];
+      const declaredDependenciesNode =
+        maybeNode &&
+        !(maybeNode.type === 'Identifier' && maybeNode.name === 'undefined')
+          ? maybeNode
+          : undefined;
       const isEffect = /Effect($|[^a-z])/g.test(reactiveHookName);
 
       // Check whether a callback is supplied. If there is no callback supplied
@@ -1169,6 +1217,15 @@ export default {
         case 'ArrowFunctionExpression':
           visitFunctionWithDependencies(
             callback,
+            declaredDependenciesNode,
+            reactiveHook,
+            reactiveHookName,
+            isEffect,
+          );
+          return; // Handled
+        case 'TSAsExpression':
+          visitFunctionWithDependencies(
+            callback.expression,
             declaredDependenciesNode,
             reactiveHook,
             reactiveHookName,
@@ -1486,7 +1543,7 @@ function getConstructionExpressionType(node) {
       }
       return null;
     case 'TypeCastExpression':
-      return getConstructionExpressionType(node.expression);
+    case 'AsExpression':
     case 'TSAsExpression':
       return getConstructionExpressionType(node.expression);
   }
@@ -1818,4 +1875,11 @@ function isSameIdentifier(a, b) {
 
 function isAncestorNodeOf(a, b) {
   return a.range[0] <= b.range[0] && a.range[1] >= b.range[1];
+}
+
+function isUseEffectEventIdentifier(node) {
+  if (__EXPERIMENTAL__) {
+    return node.type === 'Identifier' && node.name === 'useEffectEvent';
+  }
+  return false;
 }

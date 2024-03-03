@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -24,8 +24,9 @@ import Wedge from 'react-art/Wedge';
 
 // Isolate DOM renderer.
 jest.resetModules();
-const ReactDOM = require('react-dom');
-const ReactTestUtils = require('react-dom/test-utils');
+
+const ReactDOMClient = require('react-dom/client');
+const act = require('internal-test-utils').act;
 
 // Isolate test renderer.
 jest.resetModules();
@@ -40,6 +41,9 @@ let Group;
 let Shape;
 let Surface;
 let TestComponent;
+
+let waitFor;
+let groupRef;
 
 const Missing = {};
 
@@ -59,7 +63,7 @@ function testDOMNodeStructure(domNode, expectedStructure) {
     }
   }
   if (expectedStructure.children) {
-    expectedStructure.children.forEach(function(subTree, index) {
+    expectedStructure.children.forEach(function (subTree, index) {
       testDOMNodeStructure(domNode.childNodes[index], subTree);
     });
   }
@@ -78,8 +82,11 @@ describe('ReactART', () => {
     Shape = ReactART.Shape;
     Surface = ReactART.Surface;
 
+    ({waitFor} = require('internal-test-utils'));
+
+    groupRef = React.createRef();
     TestComponent = class extends React.Component {
-      group = React.createRef();
+      group = groupRef;
 
       render() {
         const a = (
@@ -128,17 +135,23 @@ describe('ReactART', () => {
     container = null;
   });
 
-  it('should have the correct lifecycle state', () => {
-    let instance = <TestComponent />;
-    instance = ReactTestUtils.renderIntoDocument(instance);
-    const group = instance.group.current;
+  it('should have the correct lifecycle state', async () => {
+    const instance = <TestComponent />;
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(instance);
+    });
+    const group = groupRef.current;
     // Duck type test for an ART group
     expect(typeof group.indicate).toBe('function');
   });
 
-  it('should render a reasonable SVG structure in SVG mode', () => {
-    let instance = <TestComponent />;
-    instance = ReactTestUtils.renderIntoDocument(instance);
+  it('should render a reasonable SVG structure in SVG mode', async () => {
+    const instance = <TestComponent />;
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(instance);
+    });
 
     const expectedStructure = {
       nodeName: 'svg',
@@ -161,15 +174,15 @@ describe('ReactART', () => {
       ],
     };
 
-    const realNode = ReactDOM.findDOMNode(instance);
+    const realNode = container.firstChild;
     testDOMNodeStructure(realNode, expectedStructure);
   });
 
-  it('should be able to reorder components', () => {
-    const instance = ReactDOM.render(
-      <TestComponent flipped={false} />,
-      container,
-    );
+  it('should be able to reorder components', async () => {
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<TestComponent flipped={false} />);
+    });
 
     const expectedStructure = {
       nodeName: 'svg',
@@ -187,10 +200,12 @@ describe('ReactART', () => {
       ],
     };
 
-    const realNode = ReactDOM.findDOMNode(instance);
+    const realNode = container.firstChild;
     testDOMNodeStructure(realNode, expectedStructure);
 
-    ReactDOM.render(<TestComponent flipped={true} />, container);
+    await act(() => {
+      root.render(<TestComponent flipped={true} />);
+    });
 
     const expectedNewStructure = {
       nodeName: 'svg',
@@ -211,7 +226,7 @@ describe('ReactART', () => {
     testDOMNodeStructure(realNode, expectedNewStructure);
   });
 
-  it('should be able to reorder many components', () => {
+  it('should be able to reorder many components', async () => {
     class Component extends React.Component {
       render() {
         const chars = this.props.chars.split('');
@@ -229,17 +244,20 @@ describe('ReactART', () => {
     const before = 'abcdefghijklmnopqrst';
     const after = 'mxhpgwfralkeoivcstzy';
 
-    let instance = ReactDOM.render(<Component chars={before} />, container);
-    const realNode = ReactDOM.findDOMNode(instance);
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<Component chars={before} />);
+    });
+    const realNode = container.firstChild;
     expect(realNode.textContent).toBe(before);
 
-    instance = ReactDOM.render(<Component chars={after} />, container);
+    await act(() => {
+      root.render(<Component chars={after} />);
+    });
     expect(realNode.textContent).toBe(after);
-
-    ReactDOM.unmountComponentAtNode(container);
   });
 
-  it('renders composite with lifecycle inside group', () => {
+  it('renders composite with lifecycle inside group', async () => {
     let mounted = false;
 
     class CustomShape extends React.Component {
@@ -251,18 +269,20 @@ describe('ReactART', () => {
         mounted = true;
       }
     }
-
-    ReactTestUtils.renderIntoDocument(
-      <Surface>
-        <Group>
-          <CustomShape />
-        </Group>
-      </Surface>,
-    );
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(
+        <Surface>
+          <Group>
+            <CustomShape />
+          </Group>
+        </Surface>,
+      );
+    });
     expect(mounted).toBe(true);
   });
 
-  it('resolves refs before componentDidMount', () => {
+  it('resolves refs before componentDidMount', async () => {
     class CustomShape extends React.Component {
       render() {
         return <Shape />;
@@ -289,11 +309,14 @@ describe('ReactART', () => {
       }
     }
 
-    ReactTestUtils.renderIntoDocument(<Outer />);
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<Outer />);
+    });
     expect(ref.constructor).toBe(CustomShape);
   });
 
-  it('resolves refs before componentDidUpdate', () => {
+  it('resolves refs before componentDidUpdate', async () => {
     class CustomShape extends React.Component {
       render() {
         return <Shape />;
@@ -323,24 +346,34 @@ describe('ReactART', () => {
         );
       }
     }
-    ReactDOM.render(<Outer />, container);
+
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<Outer />);
+    });
     expect(ref).toBe(null);
-    ReactDOM.render(<Outer mountCustomShape={true} />, container);
+
+    await act(() => {
+      root.render(<Outer mountCustomShape={true} />);
+    });
     expect(ref.constructor).toBe(CustomShape);
   });
 
-  it('adds and updates event handlers', () => {
-    function render(onClick) {
-      return ReactDOM.render(
-        <Surface>
-          <Shape onClick={onClick} />
-        </Surface>,
-        container,
-      );
+  it('adds and updates event handlers', async () => {
+    const root = ReactDOMClient.createRoot(container);
+
+    async function render(onClick) {
+      await act(() => {
+        root.render(
+          <Surface>
+            <Shape onClick={onClick} />
+          </Surface>,
+        );
+      });
     }
 
     function doClick(instance) {
-      const path = ReactDOM.findDOMNode(instance).querySelector('path');
+      const path = container.firstChild.querySelector('path');
 
       path.dispatchEvent(
         new MouseEvent('click', {
@@ -350,22 +383,22 @@ describe('ReactART', () => {
     }
 
     const onClick1 = jest.fn();
-    let instance = render(onClick1);
+    let instance = await render(onClick1);
     doClick(instance);
     expect(onClick1).toBeCalled();
 
     const onClick2 = jest.fn();
-    instance = render(onClick2);
+    instance = await render(onClick2);
     doClick(instance);
     expect(onClick2).toBeCalled();
   });
 
-  // @gate !enableSyncDefaultUpdates
-  it('can concurrently render with a "primary" renderer while sharing context', () => {
+  // @gate forceConcurrentByDefaultForTesting
+  it('can concurrently render with a "primary" renderer while sharing context', async () => {
     const CurrentRendererContext = React.createContext(null);
 
     function Yield(props) {
-      Scheduler.unstable_yieldValue(props.value);
+      Scheduler.log(props.value);
       return null;
     }
 
@@ -392,22 +425,24 @@ describe('ReactART', () => {
       </CurrentRendererContext.Provider>,
     );
 
-    expect(Scheduler).toFlushAndYieldThrough(['A']);
+    await waitFor(['A']);
 
-    ReactDOM.render(
-      <Surface>
-        <LogCurrentRenderer />
-        <CurrentRendererContext.Provider value="ART">
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(
+        <Surface>
           <LogCurrentRenderer />
-        </CurrentRendererContext.Provider>
-      </Surface>,
-      container,
-    );
+          <CurrentRendererContext.Provider value="ART">
+            <LogCurrentRenderer />
+          </CurrentRendererContext.Provider>
+        </Surface>,
+      );
+    });
 
     expect(ops).toEqual([null, 'ART']);
 
     ops = [];
-    expect(Scheduler).toFlushAndYield(['B', 'C']);
+    await waitFor(['B', 'C']);
 
     expect(ops).toEqual(['Test']);
   });
@@ -419,18 +454,6 @@ describe('ReactARTComponents', () => {
       <Circle radius={10} stroke="green" strokeWidth={3} fill="blue" />,
     );
     expect(circle.toJSON()).toMatchSnapshot();
-  });
-
-  it('should warn if radius is missing on a Circle component', () => {
-    expect(() =>
-      ReactTestRenderer.create(
-        <Circle stroke="green" strokeWidth={3} fill="blue" />,
-      ),
-    ).toErrorDev(
-      'Warning: Failed prop type: The prop `radius` is marked as required in `Circle`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Circle (at **)',
-    );
   });
 
   it('should generate a <Shape> with props for drawing the Rectangle', () => {
@@ -494,19 +517,6 @@ describe('ReactARTComponents', () => {
     expect(rectangle.toJSON()).toMatchSnapshot();
   });
 
-  it('should warn if width/height is missing on a Rectangle component', () => {
-    expect(() =>
-      ReactTestRenderer.create(<Rectangle stroke="green" fill="blue" />),
-    ).toErrorDev([
-      'Warning: Failed prop type: The prop `width` is marked as required in `Rectangle`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Rectangle (at **)',
-      'Warning: Failed prop type: The prop `height` is marked as required in `Rectangle`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Rectangle (at **)',
-    ]);
-  });
-
   it('should generate a <Shape> with props for drawing the Wedge', () => {
     const wedge = ReactTestRenderer.create(
       <Wedge outerRadius={50} startAngle={0} endAngle={360} fill="blue" />,
@@ -519,19 +529,5 @@ describe('ReactARTComponents', () => {
       <Wedge outerRadius={50} startAngle={0} endAngle={0} fill="blue" />,
     );
     expect(wedge.toJSON()).toBeNull();
-  });
-
-  it('should warn if outerRadius/startAngle/endAngle is missing on a Wedge component', () => {
-    expect(() => ReactTestRenderer.create(<Wedge fill="blue" />)).toErrorDev([
-      'Warning: Failed prop type: The prop `outerRadius` is marked as required in `Wedge`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Wedge (at **)',
-      'Warning: Failed prop type: The prop `startAngle` is marked as required in `Wedge`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Wedge (at **)',
-      'Warning: Failed prop type: The prop `endAngle` is marked as required in `Wedge`, ' +
-        'but its value is `undefined`.' +
-        '\n    in Wedge (at **)',
-    ]);
   });
 });

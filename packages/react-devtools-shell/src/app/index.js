@@ -2,9 +2,11 @@
 
 // This test harness mounts each test app as a separate root to test multi-root applications.
 
+import semver from 'semver';
+
 import {createElement} from 'react';
 import {createRoot} from 'react-dom/client';
-import {render, unmountComponentAtNode} from 'react-dom';
+
 import DeeplyNestedComponents from './DeeplyNestedComponents';
 import Iframe from './Iframe';
 import EditableProps from './EditableProps';
@@ -33,7 +35,7 @@ ignoreErrors([
 ignoreWarnings(['Warning: componentWillReceiveProps has been renamed']);
 ignoreLogs([]);
 
-const unmountFunctions = [];
+const unmountFunctions: Array<() => void | boolean> = [];
 
 function createContainer() {
   const container = document.createElement('div');
@@ -43,7 +45,7 @@ function createContainer() {
   return container;
 }
 
-function mountApp(App) {
+function mountApp(App: () => React$Node) {
   const container = createContainer();
 
   const root = createRoot(container);
@@ -52,6 +54,7 @@ function mountApp(App) {
   unmountFunctions.push(() => root.unmount());
 }
 
+// $FlowFixMe[missing-local-annot]
 function mountStrictApp(App) {
   function StrictRoot() {
     return createElement(App);
@@ -65,7 +68,9 @@ function mountStrictApp(App) {
   unmountFunctions.push(() => root.unmount());
 }
 
-function mountLegacyApp(App) {
+function mountLegacyApp(App: () => React$Node) {
+  const {render, unmountComponentAtNode} = require('react-dom');
+
   function LegacyRender() {
     return createElement(App);
   }
@@ -77,6 +82,10 @@ function mountLegacyApp(App) {
   unmountFunctions.push(() => unmountComponentAtNode(container));
 }
 
+const shouldRenderLegacy = semver.lte(
+  process.env.E2E_APP_REACT_VERSION,
+  '18.2.0',
+);
 function mountTestApp() {
   mountStrictApp(ToDoList);
   mountApp(InspectableElements);
@@ -89,7 +98,10 @@ function mountTestApp() {
   mountApp(SuspenseTree);
   mountApp(DeeplyNestedComponents);
   mountApp(Iframe);
-  mountLegacyApp(PartiallyStrictApp);
+
+  if (shouldRenderLegacy) {
+    mountLegacyApp(PartiallyStrictApp);
+  }
 }
 
 function unmountTestApp() {

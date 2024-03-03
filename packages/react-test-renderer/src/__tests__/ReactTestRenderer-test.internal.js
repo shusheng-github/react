@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,12 +14,14 @@ const ReactFeatureFlags = require('shared/ReactFeatureFlags');
 ReactFeatureFlags.replayFailedUnitOfWorkWithInvokeGuardedCallback = false;
 const React = require('react');
 const ReactTestRenderer = require('react-test-renderer');
-const prettyFormat = require('pretty-format');
+const {format: prettyFormat} = require('pretty-format');
 
 // Isolate noop renderer
 jest.resetModules();
 const ReactNoop = require('react-noop-renderer');
-const Scheduler = require('scheduler');
+
+const InternalTestUtils = require('internal-test-utils');
+const waitForAll = InternalTestUtils.waitForAll;
 
 // Kind of hacky, but we nullify all the instances to test the tree structure
 // with jasmine's deep equality function, and test the instances separate. We
@@ -49,6 +51,21 @@ function cleanNodeOrArray(node) {
 }
 
 describe('ReactTestRenderer', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    ReactFeatureFlags.enableReactTestRendererWarning = false;
+  });
+
+  it('should warn if enableReactTestRendererWarning is enabled', () => {
+    ReactFeatureFlags.enableReactTestRendererWarning = true;
+    expect(() => {
+      ReactTestRenderer.create(<div />);
+    }).toWarnDev(
+      'Warning: react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer',
+      {withoutStack: true},
+    );
+  });
+
   it('renders a simple component', () => {
     function Link() {
       return <a role="link" />;
@@ -266,26 +283,28 @@ describe('ReactTestRenderer', () => {
     expect(log).toEqual([null]);
   });
 
+  // @gate !enableRefAsProp || !__DEV__
   it('warns correctly for refs on SFCs', () => {
     function Bar() {
       return <div>Hello, world</div>;
     }
     class Foo extends React.Component {
+      fooRef = React.createRef();
       render() {
-        return <Bar ref="foo" />;
+        return <Bar ref={this.fooRef} />;
       }
     }
     class Baz extends React.Component {
+      bazRef = React.createRef();
       render() {
-        return <div ref="baz" />;
+        return <div ref={this.bazRef} />;
       }
     }
     ReactTestRenderer.create(<Baz />);
     expect(() => ReactTestRenderer.create(<Foo />)).toErrorDev(
       'Warning: Function components cannot be given refs. Attempts ' +
         'to access this ref will fail. ' +
-        'Did you mean to use React.forwardRef()?\n\n' +
-        'Check the render method of `Foo`.\n' +
+        'Did you mean to use React.forwardRef()?\n' +
         '    in Bar (at **)\n' +
         '    in Foo (at **)',
     );
@@ -298,11 +317,12 @@ describe('ReactTestRenderer', () => {
     const mockAnchorInstance = {hover: () => {}};
     const log = [];
     class Foo extends React.Component {
+      barRef = React.createRef();
       componentDidMount() {
-        log.push(this.refs.bar);
+        log.push(this.barRef.current);
       }
       render() {
-        return <a ref="bar">Hello, world</a>;
+        return <a ref={this.barRef}>Hello, world</a>;
       }
     }
     function createNodeMock(element) {
@@ -355,7 +375,7 @@ describe('ReactTestRenderer', () => {
   it('supports unmounting when using refs', () => {
     class Foo extends React.Component {
       render() {
-        return <div ref="foo" />;
+        return <div ref={React.createRef()} />;
       }
     }
     const inst = ReactTestRenderer.create(<Foo />, {
@@ -394,7 +414,11 @@ describe('ReactTestRenderer', () => {
     };
     class Foo extends React.Component {
       render() {
-        return this.props.useDiv ? <div ref="foo" /> : <span ref="foo" />;
+        return this.props.useDiv ? (
+          <div ref={React.createRef()} />
+        ) : (
+          <span ref={React.createRef()} />
+        );
       }
     }
     const inst = ReactTestRenderer.create(<Foo useDiv={true} />, {
@@ -973,9 +997,14 @@ describe('ReactTestRenderer', () => {
       </div>
     ));
 
+    let refFn;
+
     class App extends React.Component {
       render() {
-        return <InnerRefed ref={r => (this.ref = r)} />;
+        refFn = inst => {
+          this.ref = inst;
+        };
+        return <InnerRefed ref={refFn} />;
       }
     }
 
@@ -996,7 +1025,11 @@ describe('ReactTestRenderer', () => {
             {
               instance: null,
               nodeType: 'host',
-              props: {},
+              props: gate(flags => flags.enableRefAsProp)
+                ? {
+                    ref: refFn,
+                  }
+                : {},
               rendered: [],
               type: 'span',
             },
@@ -1008,7 +1041,7 @@ describe('ReactTestRenderer', () => {
     );
   });
 
-  it('can concurrently render context with a "primary" renderer', () => {
+  it('can concurrently render context with a "primary" renderer', async () => {
     const Context = React.createContext(null);
     const Indirection = React.Fragment;
     const App = () => (
@@ -1019,7 +1052,7 @@ describe('ReactTestRenderer', () => {
       </Context.Provider>
     );
     ReactNoop.render(<App />);
-    expect(Scheduler).toFlushWithoutYielding();
+    await waitForAll([]);
     ReactTestRenderer.create(<App />);
   });
 

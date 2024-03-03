@@ -1,10 +1,11 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment ./scripts/jest/ReactDOMServerIntegrationEnvironment
  */
 
 'use strict';
@@ -14,27 +15,25 @@ const ReactDOMServerIntegrationUtils = require('./utils/ReactDOMServerIntegratio
 const {disableInputAttributeSyncing} = require('shared/ReactFeatureFlags');
 
 let React;
-let ReactDOM;
+let ReactDOMClient;
 let ReactDOMServer;
-let ReactTestUtils;
 
 function initModules() {
   // Reset warning cache.
-  jest.resetModuleRegistry();
+  jest.resetModules();
   React = require('react');
-  ReactDOM = require('react-dom');
+  ReactDOMClient = require('react-dom/client');
   ReactDOMServer = require('react-dom/server');
-  ReactTestUtils = require('react-dom/test-utils');
 
   // Make them available to the helpers.
   return {
-    ReactDOM,
+    ReactDOMClient,
     ReactDOMServer,
-    ReactTestUtils,
   };
 }
 
-const {resetModules, itRenders} = ReactDOMServerIntegrationUtils(initModules);
+const {resetModules, itRenders, serverRender, streamRender} =
+  ReactDOMServerIntegrationUtils(initModules);
 
 // TODO: Run this in React Fire mode after we figure out the SSR behavior.
 const desc = disableInputAttributeSyncing ? xdescribe : describe;
@@ -46,6 +45,18 @@ desc('ReactDOMServerIntegrationInput', () => {
   itRenders('an input with a value and an onChange', async render => {
     const e = await render(<input value="foo" onChange={() => {}} />);
     expect(e.value).toBe('foo');
+  });
+
+  itRenders('an input with a bigint value and an onChange', async render => {
+    console.log(gate(flags => flags.enableBigIntSupport));
+    const e = await render(<input value={5n} onChange={() => {}} />);
+    expect(e.value).toBe(
+      gate(flags => flags.enableBigIntSupport) ||
+        render === serverRender ||
+        render === streamRender
+        ? '5'
+        : '',
+    );
   });
 
   itRenders('an input with a value and readOnly', async render => {

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,7 +14,6 @@ let React;
 let ReactDOMServer;
 let PropTypes;
 let ReactCurrentDispatcher;
-let useingPartialRenderer;
 
 describe('ReactDOMServer', () => {
   beforeEach(() => {
@@ -25,8 +24,6 @@ describe('ReactDOMServer', () => {
     ReactCurrentDispatcher =
       React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED
         .ReactCurrentDispatcher;
-
-    useingPartialRenderer = global.__WWW__ && !__EXPERIMENTAL__;
   });
 
   describe('renderToString', () => {
@@ -343,6 +340,7 @@ describe('ReactDOMServer', () => {
       expect(markup).toContain('hello, world');
     });
 
+    // @gate !disableLegacyContext
     it('renders with context when using custom constructor', () => {
       class Component extends React.Component {
         constructor() {
@@ -576,11 +574,7 @@ describe('ReactDOMServer', () => {
           <Suspender />
         </React.Suspense>,
       );
-      if (useingPartialRenderer) {
-        expect(response).toEqual('<!--$!-->fallback<!--/$-->');
-      } else {
-        expect(response).toEqual('fallback');
-      }
+      expect(response).toEqual('fallback');
     });
   });
 
@@ -620,9 +614,8 @@ describe('ReactDOMServer', () => {
   describe('renderToStaticNodeStream', () => {
     it('should generate simple markup', () => {
       const SuccessfulElement = React.createElement(() => <img />);
-      const response = ReactDOMServer.renderToStaticNodeStream(
-        SuccessfulElement,
-      );
+      const response =
+        ReactDOMServer.renderToStaticNodeStream(SuccessfulElement);
       expect(response.read().toString()).toMatch(new RegExp('<img' + '/>'));
     });
 
@@ -689,10 +682,8 @@ describe('ReactDOMServer', () => {
     }
 
     ReactDOMServer.renderToString(<Foo />);
-    expect(() =>
-      jest.runOnlyPendingTimers(),
-    ).toErrorDev(
-      'Warning: setState(...): Can only update a mounting component.' +
+    expect(() => jest.runOnlyPendingTimers()).toErrorDev(
+      'Warning: Can only update a mounting component.' +
         ' This usually means you called setState() outside componentWillMount() on the server.' +
         ' This is a no-op.\n\nPlease check the code for the Foo component.',
       {withoutStack: true},
@@ -719,10 +710,8 @@ describe('ReactDOMServer', () => {
     }
 
     ReactDOMServer.renderToString(<Baz />);
-    expect(() =>
-      jest.runOnlyPendingTimers(),
-    ).toErrorDev(
-      'Warning: forceUpdate(...): Can only update a mounting component. ' +
+    expect(() => jest.runOnlyPendingTimers()).toErrorDev(
+      'Warning: Can only update a mounting component. ' +
         'This usually means you called forceUpdate() outside componentWillMount() on the server. ' +
         'This is a no-op.\n\nPlease check the code for the Baz component.',
       {withoutStack: true},
@@ -1012,18 +1001,11 @@ describe('ReactDOMServer', () => {
     ]);
   });
 
+  // @gate enableRenderableContext || !__DEV__
   it('should warn if an invalid contextType is defined', () => {
     const Context = React.createContext();
-
     class ComponentA extends React.Component {
-      // It should warn for both Context.Consumer and Context.Provider
       static contextType = Context.Consumer;
-      render() {
-        return <div />;
-      }
-    }
-    class ComponentB extends React.Component {
-      static contextType = Context.Provider;
       render() {
         return <div />;
       }
@@ -1040,13 +1022,14 @@ describe('ReactDOMServer', () => {
     // Warnings should be deduped by component type
     ReactDOMServer.renderToString(<ComponentA />);
 
-    expect(() => {
-      ReactDOMServer.renderToString(<ComponentB />);
-    }).toErrorDev(
-      'Warning: ComponentB defines an invalid contextType. ' +
-        'contextType should point to the Context object returned by React.createContext(). ' +
-        'Did you accidentally pass the Context.Provider instead?',
-    );
+    class ComponentB extends React.Component {
+      static contextType = Context.Provider;
+      render() {
+        return <div />;
+      }
+    }
+    // Does not warn because Context === Context.Provider.
+    ReactDOMServer.renderToString(<ComponentB />);
   });
 
   it('should not warn when class contextType is null', () => {

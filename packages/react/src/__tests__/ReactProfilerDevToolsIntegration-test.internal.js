@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,6 +17,8 @@ describe('ReactProfiler DevTools integration', () => {
   let Scheduler;
   let AdvanceTime;
   let hook;
+  let waitForAll;
+  let waitFor;
 
   beforeEach(() => {
     global.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook = {
@@ -33,6 +35,10 @@ describe('ReactProfiler DevTools integration', () => {
     Scheduler = require('scheduler');
     React = require('react');
     ReactTestRenderer = require('react-test-renderer');
+
+    const InternalTestUtils = require('internal-test-utils');
+    waitForAll = InternalTestUtils.waitForAll;
+    waitFor = InternalTestUtils.waitFor;
 
     AdvanceTime = class extends React.Component {
       static defaultProps = {
@@ -112,13 +118,17 @@ describe('ReactProfiler DevTools integration', () => {
 
     Scheduler.unstable_advanceTime(20);
 
+    function Throws() {
+      throw new Error('Oops!');
+    }
+
     expect(() => {
       rendered.update(
-        <div ref="this-will-cause-an-error">
+        <Throws>
           <AdvanceTime byAmount={3} />
-        </div>,
+        </Throws>,
       );
-    }).toThrow();
+    }).toThrow('Oops!');
 
     Scheduler.unstable_advanceTime(20);
 
@@ -138,35 +148,31 @@ describe('ReactProfiler DevTools integration', () => {
     ).toBe(7);
   });
 
-  it('regression test: #17159', () => {
+  it('regression test: #17159', async () => {
     function Text({text}) {
-      Scheduler.unstable_yieldValue(text);
+      Scheduler.log(text);
       return text;
     }
 
-    const root = ReactTestRenderer.create(null, {unstable_isConcurrent: true});
+    const root = ReactTestRenderer.create(null, {isConcurrent: true});
 
     // Commit something
     root.update(<Text text="A" />);
-    expect(Scheduler).toFlushAndYield(['A']);
+    await waitForAll(['A']);
     expect(root).toMatchRenderedOutput('A');
 
     // Advance time by many seconds, larger than the default expiration time
     // for updates.
     Scheduler.unstable_advanceTime(10000);
     // Schedule an update.
-    if (gate(flags => flags.enableSyncDefaultUpdates)) {
-      React.startTransition(() => {
-        root.update(<Text text="B" />);
-      });
-    } else {
+    React.startTransition(() => {
       root.update(<Text text="B" />);
-    }
+    });
 
     // Update B should not instantly expire.
-    expect(Scheduler).toFlushAndYieldThrough([]);
+    await waitFor([]);
 
-    expect(Scheduler).toFlushAndYield(['B']);
+    await waitForAll(['B']);
     expect(root).toMatchRenderedOutput('B');
   });
 });

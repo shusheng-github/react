@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -23,16 +23,15 @@ export function setComponentTree(
   if (__DEV__) {
     if (!getNodeFromInstance || !getInstanceFromNode) {
       console.error(
-        'EventPluginUtils.setComponentTree(...): Injected ' +
+        'Injected ' +
           'module is missing getNodeFromInstance or getInstanceFromNode.',
       );
     }
   }
 }
 
-let validateEventDispatches;
-if (__DEV__) {
-  validateEventDispatches = function(event) {
+function validateEventDispatches(event) {
+  if (__DEV__) {
     const dispatchListeners = event._dispatchListeners;
     const dispatchInstances = event._dispatchInstances;
 
@@ -53,7 +52,7 @@ if (__DEV__) {
     if (instancesIsArr !== listenersIsArr || instancesLen !== listenersLen) {
       console.error('EventPluginUtils: Invalid `event`.');
     }
-  };
+  }
 }
 
 /**
@@ -151,7 +150,7 @@ export function executeDirectDispatch(event) {
   const dispatchInstance = event._dispatchInstances;
 
   if (isArray(dispatchListener)) {
-    throw new Error('executeDirectDispatch(...): Invalid `event`.');
+    throw new Error('Invalid `event`.');
   }
 
   event.currentTarget = dispatchListener
