@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -61,17 +61,14 @@ Component.prototype.isReactComponent = {};
  * @final
  * @protected
  */
-// 绑定setState方法
-Component.prototype.setState = function(partialState, callback) {
-   // setState内部调用enqueueSetState方法
-  // packages/react-reconciler/src/ReactFiberClassComponent.old.js
+Component.prototype.setState = function (partialState, callback) {
   if (
     typeof partialState !== 'object' &&
     typeof partialState !== 'function' &&
     partialState != null
   ) {
     throw new Error(
-      'setState(...): takes an object of state variables to update or a ' +
+      'takes an object of state variables to update or a ' +
         'function which returns an object of state variables.',
     );
   }
@@ -97,8 +94,12 @@ Component.prototype.setState = function(partialState, callback) {
  * @final
  * @protected
  */
+<<<<<<< HEAD
 // 绑定forceUpdate （强致更新）
 Component.prototype.forceUpdate = function(callback) {
+=======
+Component.prototype.forceUpdate = function (callback) {
+>>>>>>> 6c7efa27b46d9bdcb527bb491e9f50d2b1cb197b
   this.updater.enqueueForceUpdate(this, callback, 'forceUpdate');
 };
 
@@ -122,9 +123,9 @@ if (__DEV__) {
         'https://github.com/facebook/react/issues/3236).',
     ],
   };
-  const defineDeprecationWarning = function(methodName, info) {
+  const defineDeprecationWarning = function (methodName, info) {
     Object.defineProperty(Component.prototype, methodName, {
-      get: function() {
+      get: function () {
         console.warn(
           '%s(...) is deprecated in plain JavaScript React classes. %s',
           info[0],

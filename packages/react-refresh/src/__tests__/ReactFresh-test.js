@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -18,9 +18,12 @@ let ReactFreshRuntime;
 let Scheduler;
 let act;
 let createReactClass;
+let waitFor;
+let assertLog;
 
 describe('ReactFresh', () => {
   let container;
+  let root;
 
   beforeEach(() => {
     if (__DEV__) {
@@ -31,13 +34,19 @@ describe('ReactFresh', () => {
       ReactDOM = require('react-dom');
       ReactDOMClient = require('react-dom/client');
       Scheduler = require('scheduler');
-      act = require('jest-react').act;
+      act = require('internal-test-utils').act;
+
+      const InternalTestUtils = require('internal-test-utils');
+      waitFor = InternalTestUtils.waitFor;
+      assertLog = InternalTestUtils.assertLog;
+
       createReactClass = require('create-react-class/factory')(
         React.Component,
         React.isValidElement,
         new React.Component().updater,
       );
       container = document.createElement('div');
+      root = ReactDOMClient.createRoot(container);
       document.body.appendChild(container);
     }
   });
@@ -54,10 +63,10 @@ describe('ReactFresh', () => {
     return Component;
   }
 
-  function render(version, props) {
+  async function render(version, props) {
     const Component = version();
-    act(() => {
-      ReactDOM.render(<Component {...props} />, container);
+    await act(() => {
+      root.render(<Component {...props} />);
     });
     return Component;
   }
@@ -90,9 +99,9 @@ describe('ReactFresh', () => {
     );
   }
 
-  it('can preserve state for compatible types', () => {
+  it('can preserve state for compatible types', async () => {
     if (__DEV__) {
-      const HelloV1 = render(() => {
+      const HelloV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -109,7 +118,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -134,7 +143,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -144,15 +153,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => HelloV1);
-      render(() => HelloV2);
-      render(() => HelloV1);
+      await render(() => HelloV1);
+      await render(() => HelloV2);
+      await render(() => HelloV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -160,7 +169,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -180,9 +189,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can preserve state for forwardRef', () => {
+  it('can preserve state for forwardRef', async () => {
     if (__DEV__) {
-      const OuterV1 = render(() => {
+      const OuterV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -202,7 +211,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -230,7 +239,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -240,15 +249,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => OuterV1);
-      render(() => OuterV2);
-      render(() => OuterV1);
+      await render(() => OuterV1);
+      await render(() => OuterV2);
+      await render(() => OuterV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -270,9 +279,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('should not consider two forwardRefs around the same type to be equivalent', () => {
+  it('should not consider two forwardRefs around the same type to be equivalent', async () => {
     if (__DEV__) {
-      const ParentV1 = render(
+      const ParentV1 = await render(
         () => {
           function Hello() {
             const [val, setVal] = React.useState(0);
@@ -308,32 +317,32 @@ describe('ReactFresh', () => {
       let el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
 
       // Switching up the inner types should reset the state.
-      render(() => ParentV1, {cond: false});
+      await render(() => ParentV1, {cond: false});
       expect(el).not.toBe(container.firstChild);
       el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
 
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
 
       // Switch them up back again.
-      render(() => ParentV1, {cond: true});
+      await render(() => ParentV1, {cond: true});
       expect(el).not.toBe(container.firstChild);
       el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
 
       // Now bump up the state to prepare for patching.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -374,14 +383,14 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Switching up the condition should still reset the state.
-      render(() => ParentV2, {cond: false});
+      await render(() => ParentV2, {cond: false});
       expect(el).not.toBe(container.firstChild);
       el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('red');
 
       // Now bump up the state to prepare for top-level renders.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el).toBe(container.firstChild);
@@ -389,18 +398,18 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Finally, verify using top-level render with stale type keeps state.
-      render(() => ParentV1);
-      render(() => ParentV2);
-      render(() => ParentV1);
+      await render(() => ParentV1);
+      await render(() => ParentV2);
+      await render(() => ParentV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('1');
       expect(el.style.color).toBe('red');
     }
   });
 
-  it('can update forwardRef render function with its wrapper', () => {
+  it('can update forwardRef render function with its wrapper', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello({color}) {
           const [val, setVal] = React.useState(0);
           return (
@@ -420,7 +429,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -449,9 +458,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can update forwardRef render function in isolation', () => {
+  it('can update forwardRef render function in isolation', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello({color}) {
           const [val, setVal] = React.useState(0);
           return (
@@ -474,7 +483,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -506,9 +515,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can preserve state for simple memo', () => {
+  it('can preserve state for simple memo', async () => {
     if (__DEV__) {
-      const OuterV1 = render(() => {
+      const OuterV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -528,7 +537,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -556,7 +565,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -566,15 +575,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => OuterV1);
-      render(() => OuterV2);
-      render(() => OuterV1);
+      await render(() => OuterV1);
+      await render(() => OuterV2);
+      await render(() => OuterV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -596,9 +605,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can preserve state for memo with custom comparison', () => {
+  it('can preserve state for memo with custom comparison', async () => {
     if (__DEV__) {
-      const OuterV1 = render(() => {
+      const OuterV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -617,7 +626,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -644,7 +653,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -654,15 +663,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => OuterV1);
-      render(() => OuterV2);
-      render(() => OuterV1);
+      await render(() => OuterV1);
+      await render(() => OuterV2);
+      await render(() => OuterV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -684,9 +693,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can update simple memo function in isolation', () => {
+  it('can update simple memo function in isolation', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -704,7 +713,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -731,9 +740,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can preserve state for memo(forwardRef)', () => {
+  it('can preserve state for memo(forwardRef)', async () => {
     if (__DEV__) {
-      const OuterV1 = render(() => {
+      const OuterV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -753,7 +762,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -781,7 +790,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -791,15 +800,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => OuterV1);
-      render(() => OuterV2);
-      render(() => OuterV1);
+      await render(() => OuterV1);
+      await render(() => OuterV2);
+      await render(() => OuterV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -823,7 +832,8 @@ describe('ReactFresh', () => {
 
   it('can preserve state for lazy after resolution', async () => {
     if (__DEV__) {
-      const AppV1 = render(() => {
+      let resolve;
+      const AppV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -836,8 +846,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -855,8 +865,8 @@ describe('ReactFresh', () => {
       });
 
       expect(container.textContent).toBe('Loading');
-      await act(async () => {
-        jest.runAllTimers();
+      await act(() => {
+        resolve();
       });
       expect(container.textContent).toBe('0');
 
@@ -864,7 +874,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -883,8 +893,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -907,7 +917,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump the state again.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -917,15 +927,15 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => AppV1);
-      render(() => AppV2);
-      render(() => AppV1);
+      await render(() => AppV1);
+      await render(() => AppV2);
+      await render(() => AppV1);
       expect(container.firstChild).toBe(el);
       expect(el.textContent).toBe('2');
       expect(el.style.color).toBe('red');
 
       // Finally, a render with incompatible type should reset it.
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -959,7 +969,8 @@ describe('ReactFresh', () => {
 
   it('can patch lazy before resolution', async () => {
     if (__DEV__) {
-      render(() => {
+      let resolve;
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -972,8 +983,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -1004,8 +1015,8 @@ describe('ReactFresh', () => {
         $RefreshReg$(Hello, 'Hello');
       });
 
-      await act(async () => {
-        jest.runAllTimers();
+      await act(() => {
+        resolve();
       });
 
       // Expect different color on initial mount.
@@ -1014,7 +1025,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump state.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -1041,7 +1052,8 @@ describe('ReactFresh', () => {
 
   it('can patch lazy(forwardRef) before resolution', async () => {
     if (__DEV__) {
-      render(() => {
+      let resolve;
+      await render(() => {
         function renderHello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -1055,8 +1067,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -1088,8 +1100,8 @@ describe('ReactFresh', () => {
         $RefreshReg$(Hello, 'Hello');
       });
 
-      await act(async () => {
-        jest.runAllTimers();
+      await act(() => {
+        resolve();
       });
 
       // Expect different color on initial mount.
@@ -1098,7 +1110,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump state.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -1126,7 +1138,8 @@ describe('ReactFresh', () => {
 
   it('can patch lazy(memo) before resolution', async () => {
     if (__DEV__) {
-      render(() => {
+      let resolve;
+      await render(() => {
         function renderHello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -1140,8 +1153,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -1173,8 +1186,8 @@ describe('ReactFresh', () => {
         $RefreshReg$(Hello, 'Hello');
       });
 
-      await act(async () => {
-        jest.runAllTimers();
+      await act(() => {
+        resolve();
       });
 
       // Expect different color on initial mount.
@@ -1183,7 +1196,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump state.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -1211,7 +1224,8 @@ describe('ReactFresh', () => {
 
   it('can patch lazy(memo(forwardRef)) before resolution', async () => {
     if (__DEV__) {
-      render(() => {
+      let resolve;
+      await render(() => {
         function renderHello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -1225,8 +1239,8 @@ describe('ReactFresh', () => {
 
         const Outer = React.lazy(
           () =>
-            new Promise(resolve => {
-              setTimeout(() => resolve({default: Hello}), 100);
+            new Promise(_resolve => {
+              resolve = () => _resolve({default: Hello});
             }),
         );
         $RefreshReg$(Outer, 'Outer');
@@ -1258,8 +1272,8 @@ describe('ReactFresh', () => {
         $RefreshReg$(Hello, 'Hello');
       });
 
-      await act(async () => {
-        jest.runAllTimers();
+      await act(() => {
+        resolve();
       });
 
       // Expect different color on initial mount.
@@ -1268,7 +1282,7 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('red');
 
       // Bump state.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.firstChild).toBe(el);
@@ -1294,9 +1308,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can patch both trees while suspense is displaying the fallback', async () => {
+  it('only patches the fallback tree while suspended', async () => {
     if (__DEV__) {
-      const AppV1 = render(
+      const AppV1 = await render(
         () => {
           function Hello({children}) {
             const [val, setVal] = React.useState(0);
@@ -1334,7 +1348,7 @@ describe('ReactFresh', () => {
       expect(primaryChild.style.display).toBe('');
 
       // Bump primary content state.
-      act(() => {
+      await act(() => {
         primaryChild.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.childNodes.length).toBe(1);
@@ -1362,7 +1376,7 @@ describe('ReactFresh', () => {
       expect(primaryChild.style.display).toBe('');
 
       // Now force the tree to suspend.
-      render(() => AppV1, {shouldSuspend: true});
+      await render(() => AppV1, {shouldSuspend: true});
 
       // Expect to see two trees, one of them is hidden.
       expect(container.childNodes.length).toBe(2);
@@ -1376,7 +1390,7 @@ describe('ReactFresh', () => {
       expect(fallbackChild.style.display).toBe('');
 
       // Bump fallback state.
-      act(() => {
+      await act(() => {
         fallbackChild.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(container.childNodes.length).toBe(2);
@@ -1402,19 +1416,19 @@ describe('ReactFresh', () => {
         $RefreshReg$(Hello, 'Hello');
       });
 
-      // Colors inside both trees should change:
+      // Only update color in the visible child
       expect(container.childNodes.length).toBe(2);
       expect(container.childNodes[0]).toBe(primaryChild);
       expect(container.childNodes[1]).toBe(fallbackChild);
       expect(primaryChild.textContent).toBe('Content 1');
-      expect(primaryChild.style.color).toBe('red');
+      expect(primaryChild.style.color).toBe('green');
       expect(primaryChild.style.display).toBe('none');
       expect(fallbackChild.textContent).toBe('Fallback 1');
       expect(fallbackChild.style.color).toBe('red');
       expect(fallbackChild.style.display).toBe('');
 
       // Only primary tree should exist now:
-      render(() => AppV1, {shouldSuspend: false});
+      await render(() => AppV1, {shouldSuspend: false});
       expect(container.childNodes.length).toBe(1);
       expect(container.childNodes[0]).toBe(primaryChild);
       expect(primaryChild.textContent).toBe('Content 1');
@@ -1441,11 +1455,11 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('does not re-render ancestor components unnecessarily during a hot update', () => {
+  it('does not re-render ancestor components unnecessarily during a hot update', async () => {
     if (__DEV__) {
       let appRenders = 0;
 
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -1469,7 +1483,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -1499,7 +1513,7 @@ describe('ReactFresh', () => {
       expect(appRenders).toBe(1);
 
       // Bump the state.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('2');
@@ -1509,11 +1523,11 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('batches re-renders during a hot update', () => {
+  it('batches re-renders during a hot update', async () => {
     if (__DEV__) {
       let helloRenders = 0;
 
-      render(() => {
+      await render(() => {
         function Hello({children}) {
           helloRenders++;
           return <div>X{children}X</div>;
@@ -1550,9 +1564,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('does not leak state between components', () => {
+  it('does not leak state between components', async () => {
     if (__DEV__) {
-      const AppV1 = render(
+      const AppV1 = await render(
         () => {
           function Hello1() {
             const [val, setVal] = React.useState(0);
@@ -1585,21 +1599,21 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
 
       // Switch the condition, flipping inner content.
       // This should reset the state.
-      render(() => AppV1, {cond: true});
+      await render(() => AppV1, {cond: true});
       const el2 = container.firstChild;
       expect(el2).not.toBe(el);
       expect(el2.textContent).toBe('0');
       expect(el2.style.color).toBe('blue');
 
       // Bump it again.
-      act(() => {
+      await act(() => {
         el2.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el2.textContent).toBe('1');
@@ -1632,7 +1646,7 @@ describe('ReactFresh', () => {
       expect(el2.style.color).toBe('red');
 
       // Flip the condition again.
-      render(() => AppV1, {cond: false});
+      await render(() => AppV1, {cond: false});
       const el3 = container.firstChild;
       expect(el3).not.toBe(el2);
       expect(el3.textContent).toBe('0');
@@ -1640,9 +1654,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can force remount by changing signature', () => {
+  it('can force remount by changing signature', async () => {
     if (__DEV__) {
-      const HelloV1 = render(() => {
+      const HelloV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -1661,7 +1675,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -1710,7 +1724,7 @@ describe('ReactFresh', () => {
       expect(newEl.style.color).toBe('yellow');
 
       // Bump state again.
-      act(() => {
+      await act(() => {
         newEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(newEl.textContent).toBe('1');
@@ -1719,11 +1733,11 @@ describe('ReactFresh', () => {
       // Perform top-down renders with both fresh and stale types.
       // Neither should change the state or color.
       // They should always resolve to the latest version.
-      render(() => HelloV1);
-      render(() => HelloV2);
-      render(() => HelloV3);
-      render(() => HelloV2);
-      render(() => HelloV1);
+      await render(() => HelloV1);
+      await render(() => HelloV2);
+      await render(() => HelloV3);
+      await render(() => HelloV2);
+      await render(() => HelloV1);
       expect(container.firstChild).toBe(newEl);
       expect(newEl.textContent).toBe('1');
       expect(newEl.style.color).toBe('yellow');
@@ -1771,7 +1785,7 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('keeps a valid tree when forcing remount', () => {
+  it('keeps a valid tree when forcing remount', async () => {
     if (__DEV__) {
       const HelloV1 = prepare(() => {
         function Hello() {
@@ -1901,26 +1915,31 @@ describe('ReactFresh', () => {
         </HelloV1>,
       ];
 
-      // First, check that each tree handles remounts in isolation.
-      ReactDOM.render(null, container);
+      await act(() => {
+        root.render(null);
+      });
+
       for (let i = 0; i < trees.length; i++) {
-        runRemountingStressTest(trees[i]);
+        await runRemountingStressTest(trees[i]);
       }
 
       // Then check that each tree is resilient to updates from another tree.
       for (let i = 0; i < trees.length; i++) {
         for (let j = 0; j < trees.length; j++) {
-          ReactDOM.render(null, container);
+          await act(() => {
+            root.render(null);
+          });
+
           // Intentionally don't clean up between the tests:
-          runRemountingStressTest(trees[i]);
-          runRemountingStressTest(trees[j]);
-          runRemountingStressTest(trees[i]);
+          await runRemountingStressTest(trees[i]);
+          await runRemountingStressTest(trees[j]);
+          await runRemountingStressTest(trees[i]);
         }
       }
     }
-  });
+  }, 10000);
 
-  function runRemountingStressTest(tree) {
+  async function runRemountingStressTest(tree) {
     patch(() => {
       function Hello({children}) {
         return <section data-color="blue">{children}</section>;
@@ -1930,7 +1949,10 @@ describe('ReactFresh', () => {
       return Hello;
     });
 
-    ReactDOM.render(tree, container);
+    await act(() => {
+      root.render(tree);
+    });
+
     const elements = container.querySelectorAll('section');
     // Each tree above produces exactly three <section> elements:
     expect(elements.length).toBe(3);
@@ -1994,8 +2016,10 @@ describe('ReactFresh', () => {
       expect(el.dataset.color).toBe('black');
     });
 
-    // Do another render just in case.
-    ReactDOM.render(tree, container);
+    await act(() => {
+      root.render(tree);
+    });
+
     expect(container.querySelectorAll('section').length).toBe(3);
     container.querySelectorAll('section').forEach((el, index) => {
       expect(el).toBe(elementsAfterRemount[index]);
@@ -2003,21 +2027,21 @@ describe('ReactFresh', () => {
     });
   }
 
-  it('can remount on signature change within a <root> wrapper', () => {
+  it('can remount on signature change within a <root> wrapper', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => Hello);
+      await testRemountingWithWrapper(Hello => Hello);
     }
   });
 
-  it('can remount on signature change within a simple memo wrapper', () => {
+  it('can remount on signature change within a simple memo wrapper', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => React.memo(Hello));
+      await testRemountingWithWrapper(Hello => React.memo(Hello));
     }
   });
 
-  it('can remount on signature change within a lazy simple memo wrapper', () => {
+  it('can remount on signature change within a lazy simple memo wrapper', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello =>
+      await testRemountingWithWrapper(Hello =>
         React.lazy(() => ({
           then(cb) {
             cb({default: React.memo(Hello)});
@@ -2027,35 +2051,37 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within forwardRef', () => {
+  it('can remount on signature change within forwardRef', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => React.forwardRef(Hello));
+      await testRemountingWithWrapper(Hello => React.forwardRef(Hello));
     }
   });
 
-  it('can remount on signature change within forwardRef render function', () => {
+  it('can remount on signature change within forwardRef render function', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => React.forwardRef(() => <Hello />));
+      await testRemountingWithWrapper(Hello =>
+        React.forwardRef(() => <Hello />),
+      );
     }
   });
 
-  it('can remount on signature change within nested memo', () => {
+  it('can remount on signature change within nested memo', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello =>
+      await testRemountingWithWrapper(Hello =>
         React.memo(React.memo(React.memo(Hello))),
       );
     }
   });
 
-  it('can remount on signature change within a memo wrapper and custom comparison', () => {
+  it('can remount on signature change within a memo wrapper and custom comparison', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => React.memo(Hello, () => true));
+      await testRemountingWithWrapper(Hello => React.memo(Hello, () => true));
     }
   });
 
-  it('can remount on signature change within a class', () => {
+  it('can remount on signature change within a class', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const child = <Hello />;
         return class Wrapper extends React.PureComponent {
           render() {
@@ -2066,9 +2092,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a context provider', () => {
+  it('can remount on signature change within a context provider', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const Context = React.createContext();
         const child = (
           <Context.Provider value="constant">
@@ -2082,9 +2108,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a context consumer', () => {
+  it('can remount on signature change within a context consumer', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const Context = React.createContext();
         const child = <Context.Consumer>{() => <Hello />}</Context.Consumer>;
         return function Wrapper() {
@@ -2094,9 +2120,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a suspense node', () => {
+  it('can remount on signature change within a suspense node', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         // TODO: we'll probably want to test fallback trees too.
         const child = (
           <React.Suspense>
@@ -2110,9 +2136,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a mode node', () => {
+  it('can remount on signature change within a mode node', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const child = (
           <React.StrictMode>
             <Hello />
@@ -2125,9 +2151,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a fragment node', () => {
+  it('can remount on signature change within a fragment node', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const child = (
           <>
             <Hello />
@@ -2140,9 +2166,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within multiple siblings', () => {
+  it('can remount on signature change within multiple siblings', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const child = (
           <>
             <>
@@ -2159,9 +2185,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can remount on signature change within a profiler node', () => {
+  it('can remount on signature change within a profiler node', async () => {
     if (__DEV__) {
-      testRemountingWithWrapper(Hello => {
+      await testRemountingWithWrapper(Hello => {
         const child = <Hello />;
         return function Wrapper() {
           return (
@@ -2174,8 +2200,8 @@ describe('ReactFresh', () => {
     }
   });
 
-  function testRemountingWithWrapper(wrap) {
-    render(() => {
+  async function testRemountingWithWrapper(wrap) {
+    await render(() => {
       function Hello() {
         const [val, setVal] = React.useState(0);
         return (
@@ -2197,7 +2223,7 @@ describe('ReactFresh', () => {
     const el = container.firstChild;
     expect(el.textContent).toBe('0');
     expect(el.style.color).toBe('blue');
-    act(() => {
+    await act(() => {
       el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     });
     expect(el.textContent).toBe('1');
@@ -2246,7 +2272,7 @@ describe('ReactFresh', () => {
     expect(newEl.style.color).toBe('yellow');
 
     // Bump state again.
-    act(() => {
+    await act(() => {
       newEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     });
     expect(newEl.textContent).toBe('1');
@@ -2294,11 +2320,11 @@ describe('ReactFresh', () => {
     expect(finalEl.style.color).toBe('orange');
   }
 
-  it('resets hooks with dependencies on hot reload', () => {
+  it('resets hooks with dependencies on hot reload', async () => {
     if (__DEV__) {
       let useEffectWithEmptyArrayCalls = 0;
 
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           const tranformed = React.useMemo(() => val * 2, [val]);
@@ -2323,33 +2349,31 @@ describe('ReactFresh', () => {
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
       expect(useEffectWithEmptyArrayCalls).toBe(1); // useEffect ran
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('2'); // val * 2
       expect(useEffectWithEmptyArrayCalls).toBe(1); // useEffect didn't re-run
 
       // Perform a hot update.
-      act(() => {
-        patch(() => {
-          function Hello() {
-            const [val, setVal] = React.useState(0);
-            const tranformed = React.useMemo(() => val * 10, [val]);
-            const handleClick = React.useCallback(() => setVal(v => v - 1), []);
+      patch(() => {
+        function Hello() {
+          const [val, setVal] = React.useState(0);
+          const tranformed = React.useMemo(() => val * 10, [val]);
+          const handleClick = React.useCallback(() => setVal(v => v - 1), []);
 
-            React.useEffect(() => {
-              useEffectWithEmptyArrayCalls++;
-            }, []);
+          React.useEffect(() => {
+            useEffectWithEmptyArrayCalls++;
+          }, []);
 
-            return (
-              <p style={{color: 'red'}} onClick={handleClick}>
-                {tranformed}
-              </p>
-            );
-          }
-          $RefreshReg$(Hello, 'Hello');
-          return Hello;
-        });
+          return (
+            <p style={{color: 'red'}} onClick={handleClick}>
+              {tranformed}
+            </p>
+          );
+        }
+        $RefreshReg$(Hello, 'Hello');
+        return Hello;
       });
 
       // Assert the state was preserved but memo was evicted.
@@ -2359,7 +2383,7 @@ describe('ReactFresh', () => {
       expect(useEffectWithEmptyArrayCalls).toBe(2); // useEffect re-ran
 
       // This should fire the new callback which decreases the counter.
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('0');
@@ -2369,9 +2393,9 @@ describe('ReactFresh', () => {
   });
 
   // This pattern is inspired by useSubscription and similar mechanisms.
-  it('does not get into infinite loops during render phase updates', () => {
+  it('does not get into infinite loops during render phase updates', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           const source = React.useMemo(() => ({value: 10}), []);
           const [state, setState] = React.useState({value: null});
@@ -2389,20 +2413,18 @@ describe('ReactFresh', () => {
       expect(el.style.color).toBe('blue');
 
       // Perform a hot update.
-      act(() => {
-        patch(() => {
-          function Hello() {
-            const source = React.useMemo(() => ({value: 20}), []);
-            const [state, setState] = React.useState({value: null});
-            if (state !== source) {
-              // This should perform a single render-phase update.
-              setState(source);
-            }
-            return <p style={{color: 'red'}}>{state.value}</p>;
+      patch(() => {
+        function Hello() {
+          const source = React.useMemo(() => ({value: 20}), []);
+          const [state, setState] = React.useState({value: null});
+          if (state !== source) {
+            // This should perform a single render-phase update.
+            setState(source);
           }
-          $RefreshReg$(Hello, 'Hello');
-          return Hello;
-        });
+          return <p style={{color: 'red'}}>{state.value}</p>;
+        }
+        $RefreshReg$(Hello, 'Hello');
+        return Hello;
       });
 
       expect(container.firstChild).toBe(el);
@@ -2416,7 +2438,7 @@ describe('ReactFresh', () => {
     const AppV1 = prepare(() => {
       function Hello() {
         React.useLayoutEffect(() => {
-          Scheduler.unstable_yieldValue('Hello#layout');
+          Scheduler.log('Hello#layout');
         });
         const [val, setVal] = React.useState(0);
         return (
@@ -2429,7 +2451,7 @@ describe('ReactFresh', () => {
 
       return function App({offscreen}) {
         React.useLayoutEffect(() => {
-          Scheduler.unstable_yieldValue('App#layout');
+          Scheduler.log('App#layout');
         });
         return (
           <LegacyHiddenDiv mode={offscreen ? 'hidden' : 'visible'}>
@@ -2439,9 +2461,8 @@ describe('ReactFresh', () => {
       };
     });
 
-    const root = ReactDOMClient.createRoot(container);
     root.render(<AppV1 offscreen={true} />);
-    expect(Scheduler).toFlushAndYieldThrough(['App#layout']);
+    await waitFor(['App#layout']);
     const el = container.firstChild;
     expect(el.hidden).toBe(true);
     expect(el.firstChild).toBe(null); // Offscreen content not flushed yet.
@@ -2450,7 +2471,7 @@ describe('ReactFresh', () => {
     patch(() => {
       function Hello() {
         React.useLayoutEffect(() => {
-          Scheduler.unstable_yieldValue('Hello#layout');
+          Scheduler.log('Hello#layout');
         });
         const [val, setVal] = React.useState(0);
         return (
@@ -2468,12 +2489,12 @@ describe('ReactFresh', () => {
     expect(el.firstChild).toBe(null);
 
     // Process the offscreen updates.
-    expect(Scheduler).toFlushAndYieldThrough(['Hello#layout']);
+    await waitFor(['Hello#layout']);
     expect(container.firstChild).toBe(el);
     expect(el.firstChild.textContent).toBe('0');
     expect(el.firstChild.style.color).toBe('red');
 
-    await act(async () => {
+    await act(() => {
       el.firstChild.dispatchEvent(
         new MouseEvent('click', {
           bubbles: true,
@@ -2481,7 +2502,7 @@ describe('ReactFresh', () => {
       );
     });
 
-    expect(Scheduler).toHaveYielded(['Hello#layout']);
+    assertLog(['Hello#layout']);
     expect(el.firstChild.textContent).toBe('1');
     expect(el.firstChild.style.color).toBe('red');
 
@@ -2489,7 +2510,7 @@ describe('ReactFresh', () => {
     patch(() => {
       function Hello() {
         React.useLayoutEffect(() => {
-          Scheduler.unstable_yieldValue('Hello#layout');
+          Scheduler.log('Hello#layout');
         });
         const [val, setVal] = React.useState(0);
         return (
@@ -2507,15 +2528,15 @@ describe('ReactFresh', () => {
     expect(el.firstChild.style.color).toBe('red');
 
     // Process the offscreen updates.
-    expect(Scheduler).toFlushAndYieldThrough(['Hello#layout']);
+    await waitFor(['Hello#layout']);
     expect(container.firstChild).toBe(el);
     expect(el.firstChild.textContent).toBe('1');
     expect(el.firstChild.style.color).toBe('orange');
   });
 
-  it('remounts failed error boundaries (componentDidCatch)', () => {
+  it('remounts failed error boundaries (componentDidCatch)', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           return <h1>Hi</h1>;
         }
@@ -2591,9 +2612,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('remounts failed error boundaries (getDerivedStateFromError)', () => {
+  it('remounts failed error boundaries (getDerivedStateFromError)', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           return <h1>Hi</h1>;
         }
@@ -2669,9 +2690,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('remounts error boundaries that failed asynchronously after hot update', () => {
+  it('remounts error boundaries that failed asynchronously after hot update', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           const [x] = React.useState('');
           React.useEffect(() => {}, []);
@@ -2713,26 +2734,25 @@ describe('ReactFresh', () => {
       const secondP = firstP.nextSibling.nextSibling;
 
       // Perform a hot update that fails.
-      act(() => {
-        patch(() => {
-          function Hello() {
-            const [x, setX] = React.useState('');
-            React.useEffect(() => {
-              setTimeout(() => {
-                setX(42); // This will crash next render.
-              }, 1);
-            }, []);
-            x.slice();
-            return <h1>Hi</h1>;
-          }
-          $RefreshReg$(Hello, 'Hello');
-        });
+      let crash;
+      patch(() => {
+        function Hello() {
+          const [x, setX] = React.useState('');
+          React.useEffect(() => {
+            crash = () => {
+              setX(42); // This will crash next render.
+            };
+          }, []);
+          x.slice();
+          return <h1>Hi</h1>;
+        }
+        $RefreshReg$(Hello, 'Hello');
       });
 
       expect(container.innerHTML).toBe('<p>A</p><h1>Hi</h1><p>B</p>');
       // Run timeout inside effect:
-      act(() => {
-        jest.runAllTimers();
+      await act(() => {
+        crash();
       });
       expect(container.innerHTML).toBe(
         '<p>A</p><h1>Oops: x.slice is not a function</h1><p>B</p>',
@@ -2741,16 +2761,14 @@ describe('ReactFresh', () => {
       expect(container.firstChild.nextSibling.nextSibling).toBe(secondP);
 
       // Perform a hot update that fixes the error.
-      act(() => {
-        patch(() => {
-          function Hello() {
-            const [x] = React.useState('');
-            React.useEffect(() => {}, []); // Removes the bad effect code.
-            x.slice(); // Doesn't throw initially.
-            return <h1>Fixed!</h1>;
-          }
-          $RefreshReg$(Hello, 'Hello');
-        });
+      patch(() => {
+        function Hello() {
+          const [x] = React.useState('');
+          React.useEffect(() => {}, []); // Removes the bad effect code.
+          x.slice(); // Doesn't throw initially.
+          return <h1>Fixed!</h1>;
+        }
+        $RefreshReg$(Hello, 'Hello');
       });
 
       // This should remount the error boundary (but not anything above it).
@@ -2760,16 +2778,14 @@ describe('ReactFresh', () => {
 
       // Verify next hot reload doesn't remount anything.
       const helloNode = container.firstChild.nextSibling;
-      act(() => {
-        patch(() => {
-          function Hello() {
-            const [x] = React.useState('');
-            React.useEffect(() => {}, []);
-            x.slice();
-            return <h1>Nice.</h1>;
-          }
-          $RefreshReg$(Hello, 'Hello');
-        });
+      patch(() => {
+        function Hello() {
+          const [x] = React.useState('');
+          React.useEffect(() => {}, []);
+          x.slice();
+          return <h1>Nice.</h1>;
+        }
+        $RefreshReg$(Hello, 'Hello');
       });
 
       expect(container.firstChild.nextSibling).toBe(helloNode);
@@ -2777,9 +2793,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('remounts a failed root on mount', () => {
+  it('remounts a failed root on mount', async () => {
     if (__DEV__) {
-      expect(() => {
+      await expect(
         render(() => {
           function Hello() {
             throw new Error('No');
@@ -2787,8 +2803,8 @@ describe('ReactFresh', () => {
           $RefreshReg$(Hello, 'Hello');
 
           return Hello;
-        });
-      }).toThrow('No');
+        }),
+      ).rejects.toThrow('No');
       expect(container.innerHTML).toBe('');
 
       // A bad retry
@@ -2840,7 +2856,9 @@ describe('ReactFresh', () => {
       expect(container.innerHTML).toBe('<h1>Fixed 2!</h1>');
 
       // Updates after intentional unmount are ignored.
-      ReactDOM.unmountComponentAtNode(container);
+      await act(() => {
+        root.unmount();
+      });
       patch(() => {
         function Hello() {
           throw new Error('Ignored');
@@ -2858,9 +2876,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('does not retry an intentionally unmounted failed root', () => {
+  it('does not retry an intentionally unmounted failed root', async () => {
     if (__DEV__) {
-      expect(() => {
+      await expect(
         render(() => {
           function Hello() {
             throw new Error('No');
@@ -2868,12 +2886,14 @@ describe('ReactFresh', () => {
           $RefreshReg$(Hello, 'Hello');
 
           return Hello;
-        });
-      }).toThrow('No');
+        }),
+      ).rejects.toThrow('No');
       expect(container.innerHTML).toBe('');
 
       // Intentional unmount.
-      ReactDOM.unmountComponentAtNode(container);
+      await act(() => {
+        root.unmount();
+      });
 
       // Perform a hot update that fixes the error.
       patch(() => {
@@ -2887,9 +2907,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('remounts a failed root on update', () => {
+  it('remounts a failed root on update', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Hello() {
           return <h1>Hi</h1>;
         }
@@ -2965,7 +2985,9 @@ describe('ReactFresh', () => {
       expect(container.innerHTML).toBe('<h1>At last.</h1>');
 
       // Check we don't attempt to reverse an intentional unmount.
-      ReactDOM.unmountComponentAtNode(container);
+      await act(() => {
+        root.unmount();
+      });
       expect(container.innerHTML).toBe('');
       patch(() => {
         function Hello() {
@@ -2976,7 +2998,8 @@ describe('ReactFresh', () => {
       expect(container.innerHTML).toBe('');
 
       // Mount a new container.
-      render(() => {
+      root = ReactDOMClient.createRoot(container);
+      await render(() => {
         function Hello() {
           return <h1>Hi</h1>;
         }
@@ -2998,7 +3021,9 @@ describe('ReactFresh', () => {
       expect(container.innerHTML).toBe('');
 
       // Check we don't attempt to reverse an intentional unmount, even after an error.
-      ReactDOM.unmountComponentAtNode(container);
+      await act(() => {
+        root.unmount();
+      });
       expect(container.innerHTML).toBe('');
       patch(() => {
         function Hello() {
@@ -3010,10 +3035,12 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('regression test: does not get into an infinite loop', () => {
+  it('regression test: does not get into an infinite loop', async () => {
     if (__DEV__) {
       const containerA = document.createElement('div');
       const containerB = document.createElement('div');
+      const rootA = ReactDOMClient.createRoot(containerA);
+      const rootB = ReactDOMClient.createRoot(containerB);
 
       // Initially, nothing interesting.
       const RootAV1 = () => {
@@ -3025,9 +3052,9 @@ describe('ReactFresh', () => {
       };
       $RefreshReg$(RootBV1, 'RootB');
 
-      act(() => {
-        ReactDOM.render(<RootAV1 />, containerA);
-        ReactDOM.render(<RootBV1 />, containerB);
+      await act(() => {
+        rootA.render(<RootAV1 />);
+        rootB.render(<RootBV1 />);
       });
       expect(containerA.innerHTML).toBe('A1');
       expect(containerB.innerHTML).toBe('B1');
@@ -3037,7 +3064,11 @@ describe('ReactFresh', () => {
         throw new Error('A2!');
       };
       $RefreshReg$(RootAV2, 'RootA');
-      expect(() => ReactFreshRuntime.performReactRefresh()).toThrow('A2!');
+      await expect(
+        act(() => {
+          ReactFreshRuntime.performReactRefresh();
+        }),
+      ).rejects.toThrow('A2!');
       expect(containerA.innerHTML).toBe('');
       expect(containerB.innerHTML).toBe('B1');
 
@@ -3051,7 +3082,11 @@ describe('ReactFresh', () => {
         return 'A3';
       };
       $RefreshReg$(RootAV3, 'RootA');
-      expect(() => ReactFreshRuntime.performReactRefresh()).toThrow('A3!');
+      await expect(
+        act(() => {
+          ReactFreshRuntime.performReactRefresh();
+        }),
+      ).rejects.toThrow('A3!');
       expect(containerA.innerHTML).toBe('');
       expect(containerB.innerHTML).toBe('B1');
 
@@ -3059,15 +3094,17 @@ describe('ReactFresh', () => {
         return 'A4';
       };
       $RefreshReg$(RootAV4, 'RootA');
-      ReactFreshRuntime.performReactRefresh();
+      await act(() => {
+        ReactFreshRuntime.performReactRefresh();
+      });
       expect(containerA.innerHTML).toBe('A4');
       expect(containerB.innerHTML).toBe('B1');
     }
   });
 
-  it('remounts classes on every edit', () => {
+  it('remounts classes on every edit', async () => {
     if (__DEV__) {
-      const HelloV1 = render(() => {
+      const HelloV1 = await render(() => {
         class Hello extends React.Component {
           state = {count: 0};
           handleClick = () => {
@@ -3096,7 +3133,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -3127,14 +3164,14 @@ describe('ReactFresh', () => {
       const newEl = container.firstChild;
       expect(newEl.textContent).toBe('0');
       expect(newEl.style.color).toBe('red');
-      act(() => {
+      await act(() => {
         newEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(newEl.textContent).toBe('1');
 
       // Now top-level renders of both types resolve to latest.
-      render(() => HelloV1);
-      render(() => HelloV2);
+      await render(() => HelloV1);
+      await render(() => HelloV2);
       expect(container.firstChild).toBe(newEl);
       expect(newEl.style.color).toBe('red');
       expect(newEl.textContent).toBe('1');
@@ -3164,24 +3201,24 @@ describe('ReactFresh', () => {
       const finalEl = container.firstChild;
       expect(finalEl.textContent).toBe('0');
       expect(finalEl.style.color).toBe('orange');
-      act(() => {
+      await act(() => {
         finalEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(finalEl.textContent).toBe('1');
 
-      render(() => HelloV3);
-      render(() => HelloV2);
-      render(() => HelloV1);
+      await render(() => HelloV3);
+      await render(() => HelloV2);
+      await render(() => HelloV1);
       expect(container.firstChild).toBe(finalEl);
       expect(finalEl.style.color).toBe('orange');
       expect(finalEl.textContent).toBe('1');
     }
   });
 
-  it('updates refs when remounting', () => {
+  it('updates refs when remounting', async () => {
     if (__DEV__) {
       const testRef = React.createRef();
-      render(
+      await render(
         () => {
           class Hello extends React.Component {
             getColor() {
@@ -3252,9 +3289,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('remounts on conversion from class to function and back', () => {
+  it('remounts on conversion from class to function and back', async () => {
     if (__DEV__) {
-      const HelloV1 = render(() => {
+      const HelloV1 = await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -3271,7 +3308,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -3302,14 +3339,14 @@ describe('ReactFresh', () => {
       const newEl = container.firstChild;
       expect(newEl.textContent).toBe('0');
       expect(newEl.style.color).toBe('red');
-      act(() => {
+      await act(() => {
         newEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(newEl.textContent).toBe('1');
 
       // Now top-level renders of both types resolve to latest.
-      render(() => HelloV1);
-      render(() => HelloV2);
+      await render(() => HelloV1);
+      await render(() => HelloV2);
       expect(container.firstChild).toBe(newEl);
       expect(newEl.style.color).toBe('red');
       expect(newEl.textContent).toBe('1');
@@ -3333,14 +3370,14 @@ describe('ReactFresh', () => {
       const finalEl = container.firstChild;
       expect(finalEl.textContent).toBe('0');
       expect(finalEl.style.color).toBe('orange');
-      act(() => {
+      await act(() => {
         finalEl.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(finalEl.textContent).toBe('1');
 
-      render(() => HelloV3);
-      render(() => HelloV2);
-      render(() => HelloV1);
+      await render(() => HelloV3);
+      await render(() => HelloV2);
+      await render(() => HelloV1);
       expect(container.firstChild).toBe(finalEl);
       expect(finalEl.style.color).toBe('orange');
       expect(finalEl.textContent).toBe('1');
@@ -3364,9 +3401,9 @@ describe('ReactFresh', () => {
     }
   });
 
-  it('can find host instances for a family', () => {
+  it('can find host instances for a family', async () => {
     if (__DEV__) {
-      render(() => {
+      await render(() => {
         function Child({children}) {
           return <div className="Child">{children}</div>;
         }
@@ -3472,7 +3509,7 @@ describe('ReactFresh', () => {
     });
   }
 
-  it('can update multiple roots independently', () => {
+  it('can update multiple roots independently', async () => {
     if (__DEV__) {
       // Declare the first version.
       const HelloV1 = () => {
@@ -3495,7 +3532,9 @@ describe('ReactFresh', () => {
         );
       };
       $RefreshReg$(HelloV2, 'Hello');
-      ReactFreshRuntime.performReactRefresh();
+      await act(() => {
+        ReactFreshRuntime.performReactRefresh();
+      });
 
       // Mount three roots.
       const cont1 = document.createElement('div');
@@ -3504,10 +3543,19 @@ describe('ReactFresh', () => {
       document.body.appendChild(cont1);
       document.body.appendChild(cont2);
       document.body.appendChild(cont3);
+      const root1 = ReactDOMClient.createRoot(cont1);
+      const root2 = ReactDOMClient.createRoot(cont2);
+      const root3 = ReactDOMClient.createRoot(cont3);
       try {
-        ReactDOM.render(<HelloV1 id={1} />, cont1);
-        ReactDOM.render(<HelloV2 id={2} />, cont2);
-        ReactDOM.render(<HelloV1 id={3} />, cont3);
+        await act(() => {
+          root1.render(<HelloV1 id={1} />);
+        });
+        await act(() => {
+          root2.render(<HelloV2 id={2} />);
+        });
+        await act(() => {
+          root3.render(<HelloV1 id={3} />);
+        });
 
         // Expect we see the V2 color.
         expect(cont1.firstChild.style.color).toBe('red');
@@ -3518,7 +3566,7 @@ describe('ReactFresh', () => {
         expect(cont3.firstChild.textContent).toBe('0');
 
         // Bump the state for each of them.
-        act(() => {
+        await act(() => {
           cont1.firstChild.dispatchEvent(
             new MouseEvent('click', {bubbles: true}),
           );
@@ -3546,7 +3594,9 @@ describe('ReactFresh', () => {
           );
         };
         $RefreshReg$(HelloV3, 'Hello');
-        ReactFreshRuntime.performReactRefresh();
+        await act(() => {
+          ReactFreshRuntime.performReactRefresh();
+        });
 
         // It should affect all roots.
         expect(cont1.firstChild.style.color).toBe('green');
@@ -3557,7 +3607,9 @@ describe('ReactFresh', () => {
         expect(cont3.firstChild.textContent).toBe('1');
 
         // Unmount the second root.
-        ReactDOM.unmountComponentAtNode(cont2);
+        await act(() => {
+          root2.unmount();
+        });
         // Make the first root throw and unmount on hot update.
         const HelloV4 = ({id}) => {
           if (id === 1) {
@@ -3571,9 +3623,11 @@ describe('ReactFresh', () => {
           );
         };
         $RefreshReg$(HelloV4, 'Hello');
-        expect(() => {
-          ReactFreshRuntime.performReactRefresh();
-        }).toThrow('Oops.');
+        await expect(
+          act(() => {
+            ReactFreshRuntime.performReactRefresh();
+          }),
+        ).rejects.toThrow('Oops.');
 
         // Still, we expect the last root to be updated.
         expect(cont1.innerHTML).toBe('');
@@ -3607,7 +3661,7 @@ describe('ReactFresh', () => {
       // a proper reload because we will bottle up the update.
       // So we're being somewhat conservative.
       expect(ReactFreshRuntime.isLikelyComponentType(() => {})).toBe(false);
-      expect(ReactFreshRuntime.isLikelyComponentType(function() {})).toBe(
+      expect(ReactFreshRuntime.isLikelyComponentType(function () {})).toBe(
         false,
       );
       expect(
@@ -3774,7 +3828,7 @@ describe('ReactFresh', () => {
   }
 
   // This simulates the scenario in https://github.com/facebook/react/issues/17626
-  it('can inject the runtime after the renderer executes', () => {
+  it('can inject the runtime after the renderer executes', async () => {
     if (__DEV__) {
       initFauxDevToolsHook();
 
@@ -3782,17 +3836,20 @@ describe('ReactFresh', () => {
       jest.resetModules();
       React = require('react');
       ReactDOM = require('react-dom');
+      ReactDOMClient = require('react-dom/client');
       Scheduler = require('scheduler');
-      act = require('jest-react').act;
+      act = require('internal-test-utils').act;
 
       // Important! Inject into the global hook *after* ReactDOM runs:
       ReactFreshRuntime = require('react-refresh/runtime');
       ReactFreshRuntime.injectIntoGlobalHook(global);
 
+      root = ReactDOMClient.createRoot(container);
+
       // We're verifying that we're able to track roots mounted after this point.
       // The rest of this test is taken from the simplest first test case.
 
-      render(() => {
+      await render(() => {
         function Hello() {
           const [val, setVal] = React.useState(0);
           return (
@@ -3809,7 +3866,7 @@ describe('ReactFresh', () => {
       const el = container.firstChild;
       expect(el.textContent).toBe('0');
       expect(el.style.color).toBe('blue');
-      act(() => {
+      await act(() => {
         el.dispatchEvent(new MouseEvent('click', {bubbles: true}));
       });
       expect(el.textContent).toBe('1');
@@ -3836,7 +3893,7 @@ describe('ReactFresh', () => {
   });
 
   // This simulates the scenario in https://github.com/facebook/react/issues/20100
-  it('does not block DevTools when an unsupported renderer is injected', () => {
+  it('does not block DevTools when an unsupported legacy renderer is injected', () => {
     if (__DEV__) {
       initFauxDevToolsHook();
 
@@ -3862,13 +3919,17 @@ describe('ReactFresh', () => {
       ReactFreshRuntime = require('react-refresh/runtime');
       ReactFreshRuntime.injectIntoGlobalHook(global);
 
-      render(() => {
-        function Hello() {
-          return <div>Hi!</div>;
-        }
-        $RefreshReg$(Hello, 'Hello');
-        return Hello;
-      });
+      // NOTE: Intentionally using createElement in this test instead of JSX
+      // because old versions of React are incompatible with the JSX transform
+      // used by our test suite.
+      const Hello = () => {
+        const [state] = React.useState('Hi!');
+        // Intentionally
+        return React.createElement('div', null, state);
+      };
+      $RefreshReg$(Hello, 'Hello');
+      const Component = Hello;
+      ReactDOM.render(React.createElement(Component), container);
 
       expect(onCommitFiberRoot).toHaveBeenCalled();
     }

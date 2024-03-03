@@ -1,6 +1,6 @@
 'use strict';
 
-const jestDiff = require('jest-diff').default;
+const {diff: jestDiff} = require('jest-diff');
 const util = require('util');
 const shouldIgnoreConsoleError = require('../shouldIgnoreConsoleError');
 
@@ -15,7 +15,7 @@ function normalizeCodeLocInfo(str) {
   //  at Component (/path/filename.js:123:45)
   // React format:
   //    in Component (at filename.js:123)
-  return str.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function(m, name) {
+  return str.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function (m, name) {
     return '\n    in ' + name + ' (at **)';
   });
 }
@@ -86,7 +86,8 @@ const createMatcherFor = (consoleMethod, matcherName) =>
         // doesn't match the number of arguments.
         // We'll fail the test if it happens.
         let argIndex = 0;
-        format.replace(/%s/g, () => argIndex++);
+        // console.* could have been called with a non-string e.g. `console.error(new Error())`
+        String(format).replace(/%s/g, () => argIndex++);
         if (argIndex !== args.length) {
           lastWarningWithMismatchingFormat = {
             format,
@@ -152,11 +153,7 @@ const createMatcherFor = (consoleMethod, matcherName) =>
       // Avoid using Jest's built-in spy since it can't be removed.
       console[consoleMethod] = consoleSpy;
 
-      try {
-        callback();
-      } catch (error) {
-        caughtError = error;
-      } finally {
+      const onFinally = () => {
         // Restore the unspied method so that unexpected errors fail tests.
         console[consoleMethod] = originalMethod;
 
@@ -259,12 +256,57 @@ const createMatcherFor = (consoleMethod, matcherName) =>
         }
 
         return {pass: true};
+      };
+
+      let returnPromise = null;
+      try {
+        const result = callback();
+
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          typeof result.then === 'function'
+        ) {
+          // `act` returns a thenable that can't be chained.
+          // Once `act(async () => {}).then(() => {}).then(() => {})` works
+          // we can just return `result.then(onFinally, error => ...)`
+          returnPromise = new Promise((resolve, reject) => {
+            result
+              .then(
+                () => {
+                  resolve(onFinally());
+                },
+                error => {
+                  caughtError = error;
+                  return resolve(onFinally());
+                }
+              )
+              // In case onFinally throws we need to reject from this matcher
+              .catch(error => {
+                reject(error);
+              });
+          });
+        }
+      } catch (error) {
+        caughtError = error;
+      } finally {
+        return returnPromise === null ? onFinally() : returnPromise;
       }
     } else {
       // Any uncaught errors or warnings should fail tests in production mode.
-      callback();
+      const result = callback();
 
-      return {pass: true};
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        typeof result.then === 'function'
+      ) {
+        return result.then(() => {
+          return {pass: true};
+        });
+      } else {
+        return {pass: true};
+      }
     }
   };
 

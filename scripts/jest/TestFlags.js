@@ -48,10 +48,8 @@ const environmentFlags = {
 
   // Use this for tests that are known to be broken.
   FIXME: false,
+  TODO: false,
 
-  // Turn these flags back on (or delete) once the effect list is removed in
-  // favor of a depth-first traversal using `subtreeTags`.
-  dfsEffectsRefactor: true,
   enableUseJSStackToTrackPassiveDurations: false,
 };
 
@@ -74,19 +72,26 @@ function getTestFlags() {
   // doesn't exist.
   return new Proxy(
     {
-      // Feature flag aliases
-      old: featureFlags.enableNewReconciler === false,
-      new: featureFlags.enableNewReconciler === true,
-
       channel: releaseChannel,
       modern: releaseChannel === 'modern',
       classic: releaseChannel === 'classic',
       source: !process.env.IS_BUILD,
       www,
 
-      // This isn't a flag, just a useful alias for tests.
-      enableUseSyncExternalStoreShim: !__VARIANT__,
+      // These aren't flags, just a useful aliases for tests.
+      enableActivity: releaseChannel === 'experimental' || www,
       enableSuspenseList: releaseChannel === 'experimental' || www,
+      enableLegacyHidden: www,
+
+      // This is used by useSyncExternalStoresShared-test.js to decide whether
+      // to test the shim or the native implementation of useSES.
+      // TODO: It's disabled when enableRefAsProp is on because the JSX
+      // runtime used by our tests is not compatible with older versions of
+      // React. If we want to keep testing this shim after enableRefIsProp is
+      // on everywhere, we'll need to find some other workaround. Maybe by
+      // only using createElement instead of JSX in that test module.
+      enableUseSyncExternalStoreShim:
+        !__VARIANT__ && !featureFlags.enableRefAsProp,
 
       // If there's a naming conflict between scheduler and React feature flags, the
       // React ones take precedence.

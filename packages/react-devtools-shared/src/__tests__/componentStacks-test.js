@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,26 +7,11 @@
  * @flow
  */
 
-function normalizeCodeLocInfo(str) {
-  if (typeof str !== 'string') {
-    return str;
-  }
-  // This special case exists only for the special source location in
-  // ReactElementValidator. That will go away if we remove source locations.
-  str = str.replace(/Check your code at .+?:\d+/g, 'Check your code at **');
-  // V8 format:
-  //  at Component (/path/filename.js:123:45)
-  // React format:
-  //    in Component (at filename.js:123)
-  return str.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function(m, name) {
-    return '\n    in ' + name + ' (at **)';
-  });
-}
+import {getVersionedRenderImplementation, normalizeCodeLocInfo} from './utils';
 
 describe('component stack', () => {
   let React;
   let act;
-  let legacyRender;
   let mockError;
   let mockWarn;
 
@@ -44,10 +29,11 @@ describe('component stack', () => {
 
     const utils = require('./utils');
     act = utils.act;
-    legacyRender = utils.legacyRender;
 
     React = require('react');
   });
+
+  const {render} = getVersionedRenderImplementation();
 
   // @reactVersion >=16.9
   it('should log the current component stack along with an error or warning', () => {
@@ -59,9 +45,7 @@ describe('component stack', () => {
       return null;
     };
 
-    const container = document.createElement('div');
-
-    act(() => legacyRender(<Grandparent />, container));
+    act(() => render(<Grandparent />));
 
     expect(mockError).toHaveBeenCalledWith(
       'Test error.',
@@ -93,14 +77,50 @@ describe('component stack', () => {
       return null;
     };
 
-    const container = document.createElement('div');
-    act(() => legacyRender(<Example test="abc" />, container));
+    act(() => render(<Example test="abc" />));
 
     expect(useEffectCount).toBe(1);
 
     expect(mockWarn).toHaveBeenCalledWith(
       'Warning to trigger appended component stacks.',
       '\n    in Example (at **)',
+    );
+  });
+
+  // @reactVersion >=18.3
+  it('should log the current component stack with debug info from promises', () => {
+    const Child = () => {
+      console.error('Test error.');
+      console.warn('Test warning.');
+      return null;
+    };
+    const ChildPromise = Promise.resolve(<Child />);
+    ChildPromise.status = 'fulfilled';
+    ChildPromise.value = <Child />;
+    ChildPromise._debugInfo = [
+      {
+        name: 'ServerComponent',
+        env: 'Server',
+      },
+    ];
+    const Parent = () => ChildPromise;
+    const Grandparent = () => <Parent />;
+
+    act(() => render(<Grandparent />));
+
+    expect(mockError).toHaveBeenCalledWith(
+      'Test error.',
+      '\n    in Child (at **)' +
+        '\n    in ServerComponent (at **)' +
+        '\n    in Parent (at **)' +
+        '\n    in Grandparent (at **)',
+    );
+    expect(mockWarn).toHaveBeenCalledWith(
+      'Test warning.',
+      '\n    in Child (at **)' +
+        '\n    in ServerComponent (at **)' +
+        '\n    in Parent (at **)' +
+        '\n    in Grandparent (at **)',
     );
   });
 });

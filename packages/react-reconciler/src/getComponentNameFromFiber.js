@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,9 +7,13 @@
  * @flow
  */
 
-import type {ReactContext, ReactProviderType} from 'shared/ReactTypes';
+import type {ReactContext, ReactConsumerType} from 'shared/ReactTypes';
+import type {Fiber} from './ReactInternalTypes';
 
-import {enableLegacyHidden} from 'shared/ReactFeatureFlags';
+import {
+  enableLegacyHidden,
+  enableRenderableContext,
+} from 'shared/ReactFeatureFlags';
 
 import {
   FunctionComponent,
@@ -18,6 +22,8 @@ import {
   HostRoot,
   HostPortal,
   HostComponent,
+  HostHoistable,
+  HostSingleton,
   HostText,
   Fragment,
   Mode,
@@ -65,17 +71,29 @@ export default function getComponentNameFromFiber(fiber: Fiber): string | null {
     case CacheComponent:
       return 'Cache';
     case ContextConsumer:
-      const context: ReactContext<any> = (type: any);
-      return getContextName(context) + '.Consumer';
+      if (enableRenderableContext) {
+        const consumer: ReactConsumerType<any> = (type: any);
+        return getContextName(consumer._context) + '.Consumer';
+      } else {
+        const context: ReactContext<any> = (type: any);
+        return getContextName(context) + '.Consumer';
+      }
     case ContextProvider:
-      const provider: ReactProviderType<any> = (type: any);
-      return getContextName(provider._context) + '.Provider';
+      if (enableRenderableContext) {
+        const context: ReactContext<any> = (type: any);
+        return getContextName(context) + '.Provider';
+      } else {
+        const provider = (type: any);
+        return getContextName(provider._context) + '.Provider';
+      }
     case DehydratedFragment:
       return 'DehydratedFragment';
     case ForwardRef:
       return getWrappedName(type, type.render, 'ForwardRef');
     case Fragment:
       return 'Fragment';
+    case HostHoistable:
+    case HostSingleton:
     case HostComponent:
       // Host component type is the display name (e.g. "div", "View")
       return type;

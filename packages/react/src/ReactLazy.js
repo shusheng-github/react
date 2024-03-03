@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Facebook, Inc. and its affiliates.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {Wakeable, Thenable} from 'shared/ReactTypes';
+import type {Wakeable, Thenable, ReactDebugInfo} from 'shared/ReactTypes';
 
 import {REACT_LAZY_TYPE} from 'shared/ReactSymbols';
 
@@ -28,7 +28,7 @@ type PendingPayload = {
 
 type ResolvedPayload<T> = {
   _status: 1,
-  _result: {default: T},
+  _result: {default: T, ...},
 };
 
 type RejectedPayload = {
@@ -43,9 +43,10 @@ type Payload<T> =
   | RejectedPayload;
 
 export type LazyComponent<T, P> = {
-  $$typeof: Symbol | number,
+  $$typeof: symbol | number,
   _payload: P,
   _init: (payload: P) => T,
+  _debugInfo?: null | ReactDebugInfo,
 };
 
 function lazyInitializer<T>(payload: Payload<T>): T {
@@ -137,22 +138,23 @@ export function lazy<T>(
     // In production, this would just set it on the object.
     let defaultProps;
     let propTypes;
-    // $FlowFixMe
+    // $FlowFixMe[prop-missing]
     Object.defineProperties(lazyType, {
       defaultProps: {
         configurable: true,
         get() {
           return defaultProps;
         },
+        // $FlowFixMe[missing-local-annot]
         set(newDefaultProps) {
           console.error(
-            'React.lazy(...): It is not supported to assign `defaultProps` to ' +
+            'It is not supported to assign `defaultProps` to ' +
               'a lazy component import. Either specify them where the component ' +
               'is defined, or create a wrapping component around it.',
           );
           defaultProps = newDefaultProps;
           // Match production behavior more closely:
-          // $FlowFixMe
+          // $FlowFixMe[prop-missing]
           Object.defineProperty(lazyType, 'defaultProps', {
             enumerable: true,
           });
@@ -163,15 +165,16 @@ export function lazy<T>(
         get() {
           return propTypes;
         },
+        // $FlowFixMe[missing-local-annot]
         set(newPropTypes) {
           console.error(
-            'React.lazy(...): It is not supported to assign `propTypes` to ' +
+            'It is not supported to assign `propTypes` to ' +
               'a lazy component import. Either specify them where the component ' +
               'is defined, or create a wrapping component around it.',
           );
           propTypes = newPropTypes;
           // Match production behavior more closely:
-          // $FlowFixMe
+          // $FlowFixMe[prop-missing]
           Object.defineProperty(lazyType, 'propTypes', {
             enumerable: true,
           });
