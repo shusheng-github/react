@@ -9,14 +9,11 @@
 
 // Keep in sync with https://github.com/facebook/flow/blob/main/lib/react.js
 export type ComponentType<-P> = React$ComponentType<P>;
-export type AbstractComponent<
-  -Config,
-  +Instance = mixed,
-> = React$AbstractComponent<Config, Instance>;
+export type AbstractComponent<-Config> = React$AbstractComponent<Config>;
 export type ElementType = React$ElementType;
 export type Element<+C> = React$Element<C>;
+export type MixedElement = React$Element<ElementType>;
 export type Key = React$Key;
-export type Ref<C> = React$Ref<C>;
 export type Node = React$Node;
 export type Context<T> = React$Context<T>;
 export type Portal = React$Portal;
@@ -27,14 +24,14 @@ export type Config<Props, DefaultProps> = React$Config<Props, DefaultProps>;
 export type ChildrenArray<+T> = $ReadOnlyArray<ChildrenArray<T>> | T;
 
 // 非源码，本地debug源码需要
-import * as React from './src/React'
+import * as React from './src/ReactClient'
 export default React
 
 // Export all exports so that they're available in tests.
 // We can't use export * from in Flow for some reason.
 export {
-  __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,
-  act,
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  __COMPILER_RUNTIME,
   Children,
   Component,
   Fragment,
@@ -45,7 +42,6 @@ export {
   cloneElement,
   createContext,
   createElement,
-  createFactory,
   createRef,
   use,
   forwardRef,
@@ -54,17 +50,15 @@ export {
   memo,
   cache,
   startTransition,
-  unstable_Cache,
-  unstable_DebugTracingMode,
   unstable_LegacyHidden,
   unstable_Activity,
   unstable_Scope,
   unstable_SuspenseList,
   unstable_TracingMarker,
-  unstable_getCacheSignal,
+  unstable_ViewTransition,
+  unstable_addTransitionType,
   unstable_getCacheForType,
   unstable_useCacheRefresh,
-  unstable_useMemoCache,
   useId,
   useCallback,
   useContext,
@@ -82,5 +76,6 @@ export {
   useRef,
   useState,
   useTransition,
+  useActionState,
   version,
 } from './src/ReactClient';

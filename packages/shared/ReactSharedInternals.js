@@ -14,6 +14,8 @@
 //   React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
 
 // 非源码，本地debug源码需要
-import ReactSharedInternals from '../react/src/ReactSharedInternals'
+import ReactSharedInternals from 'react/src/ReactSharedInternalsClient'
+// const ReactSharedInternals =
+//   React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
 
 export default ReactSharedInternals;

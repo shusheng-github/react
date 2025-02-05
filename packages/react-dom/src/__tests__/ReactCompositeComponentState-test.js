@@ -17,13 +17,14 @@ let Scheduler;
 let assertLog;
 let TestComponent;
 let testComponentInstance;
+let assertConsoleErrorDev;
 
 describe('ReactCompositeComponent-state', () => {
   beforeEach(() => {
     React = require('react');
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
-    act = require('internal-test-utils').act;
+    ({act, assertConsoleErrorDev} = require('internal-test-utils'));
     Scheduler = require('scheduler');
 
     const InternalTestUtils = require('internal-test-utils');
@@ -152,21 +153,6 @@ describe('ReactCompositeComponent-state', () => {
       root.render(<TestComponent />);
     });
 
-    await act(() => {
-      root.render(<TestComponent nextColor="green" />);
-    });
-
-    await act(() => {
-      testComponentInstance.setFavoriteColor('blue');
-    });
-    await act(() => {
-      testComponentInstance.forceUpdate(
-        testComponentInstance.peekAtCallback('forceUpdate'),
-      );
-    });
-
-    root.unmount();
-
     assertLog([
       // there is no state when getInitialState() is called
       'getInitialState undefined',
@@ -198,6 +184,13 @@ describe('ReactCompositeComponent-state', () => {
       'componentDidUpdate-prevState orange',
       'setState-yellow yellow',
       'commit yellow',
+    ]);
+
+    await act(() => {
+      root.render(<TestComponent nextColor="green" />);
+    });
+
+    assertLog([
       'componentWillReceiveProps-start yellow',
       // setState({color:'green'}) only enqueues a pending state.
       'componentWillReceiveProps-end yellow',
@@ -216,6 +209,13 @@ describe('ReactCompositeComponent-state', () => {
       'componentDidUpdate-prevState yellow',
       'setState-receiveProps green',
       'commit green',
+    ]);
+
+    await act(() => {
+      testComponentInstance.setFavoriteColor('blue');
+    });
+
+    assertLog([
       // setFavoriteColor('blue')
       'shouldComponentUpdate-currentState green',
       'shouldComponentUpdate-nextState blue',
@@ -226,6 +226,13 @@ describe('ReactCompositeComponent-state', () => {
       'componentDidUpdate-prevState green',
       'setFavoriteColor blue',
       'commit blue',
+    ]);
+    await act(() => {
+      testComponentInstance.forceUpdate(
+        testComponentInstance.peekAtCallback('forceUpdate'),
+      );
+    });
+    assertLog([
       // forceUpdate()
       'componentWillUpdate-currentState blue',
       'componentWillUpdate-nextState blue',
@@ -234,7 +241,12 @@ describe('ReactCompositeComponent-state', () => {
       'componentDidUpdate-prevState blue',
       'forceUpdate blue',
       'commit blue',
-      // unmountComponent()
+    ]);
+
+    root.unmount();
+
+    assertLog([
+      // unmount()
       // state is available within `componentWillUnmount()`
       'componentWillUnmount blue',
     ]);
@@ -375,13 +387,13 @@ describe('ReactCompositeComponent-state', () => {
     await act(() => {
       root.render(<Parent />);
     });
+
+    assertLog(['parent render one', 'child render one']);
     await act(() => {
       root.render(<Parent />);
     });
 
     assertLog([
-      'parent render one',
-      'child render one',
       'parent render one',
       'child componentWillReceiveProps one',
       'child componentWillReceiveProps done one',
@@ -458,15 +470,15 @@ describe('ReactCompositeComponent-state', () => {
       root.render(<Test />);
     });
     // Update
-    expect(() => {
-      ReactDOM.flushSync(() => {
-        root.render(<Test />);
-      });
-    }).toErrorDev(
-      'Warning: Test.componentWillReceiveProps(): Assigning directly to ' +
+    ReactDOM.flushSync(() => {
+      root.render(<Test />);
+    });
+    assertConsoleErrorDev([
+      'Test.componentWillReceiveProps(): Assigning directly to ' +
         "this.state is deprecated (except inside a component's constructor). " +
-        'Use setState instead.',
-    );
+        'Use setState instead.\n' +
+        '    in Test (at **)',
+    ]);
 
     assertLog([
       'render -- step: 1, extra: true',
@@ -507,15 +519,15 @@ describe('ReactCompositeComponent-state', () => {
     // Mount
     const container = document.createElement('div');
     const root = ReactDOMClient.createRoot(container);
-    expect(() => {
-      ReactDOM.flushSync(() => {
-        root.render(<Test />);
-      });
-    }).toErrorDev(
-      'Warning: Test.componentWillMount(): Assigning directly to ' +
+    ReactDOM.flushSync(() => {
+      root.render(<Test />);
+    });
+    assertConsoleErrorDev([
+      'Test.componentWillMount(): Assigning directly to ' +
         "this.state is deprecated (except inside a component's constructor). " +
-        'Use setState instead.',
-    );
+        'Use setState instead.\n' +
+        '    in Test (at **)',
+    ]);
 
     assertLog([
       'render -- step: 3, extra: false',
@@ -526,72 +538,6 @@ describe('ReactCompositeComponent-state', () => {
       'callback -- step: 3, extra: false',
     ]);
   });
-
-  if (!require('shared/ReactFeatureFlags').disableModulePatternComponents) {
-    it('should support stateful module pattern components', async () => {
-      function Child() {
-        return {
-          state: {
-            count: 123,
-          },
-          render() {
-            return <div>{`count:${this.state.count}`}</div>;
-          },
-        };
-      }
-
-      const el = document.createElement('div');
-      const root = ReactDOMClient.createRoot(el);
-      expect(() => {
-        ReactDOM.flushSync(() => {
-          root.render(<Child />);
-        });
-      }).toErrorDev(
-        'Warning: The <Child /> component appears to be a function component that returns a class instance. ' +
-          'Change Child to a class that extends React.Component instead. ' +
-          "If you can't use a class try assigning the prototype on the function as a workaround. " +
-          '`Child.prototype = React.Component.prototype`. ' +
-          "Don't use an arrow function since it cannot be called with `new` by React.",
-      );
-
-      expect(el.textContent).toBe('count:123');
-    });
-
-    it('should support getDerivedStateFromProps for module pattern components', async () => {
-      function Child() {
-        return {
-          state: {
-            count: 1,
-          },
-          render() {
-            return <div>{`count:${this.state.count}`}</div>;
-          },
-        };
-      }
-      Child.getDerivedStateFromProps = (props, prevState) => {
-        return {
-          count: prevState.count + props.incrementBy,
-        };
-      };
-
-      const el = document.createElement('div');
-      const root = ReactDOMClient.createRoot(el);
-      await act(() => {
-        root.render(<Child incrementBy={0} />);
-      });
-
-      expect(el.textContent).toBe('count:1');
-      await act(() => {
-        root.render(<Child incrementBy={2} />);
-      });
-      expect(el.textContent).toBe('count:3');
-
-      await act(() => {
-        root.render(<Child incrementBy={1} />);
-      });
-      expect(el.textContent).toBe('count:4');
-    });
-  }
 
   it('should not support setState in componentWillUnmount', async () => {
     let subscription;
@@ -621,15 +567,19 @@ describe('ReactCompositeComponent-state', () => {
     });
     expect(el.textContent).toBe('A');
 
-    expect(() => {
-      ReactDOM.flushSync(() => {
-        root.render(<B />);
-      });
-    }).toErrorDev(
-      "Warning: Can't perform a React state update on a component that hasn't mounted yet",
-    );
+    ReactDOM.flushSync(() => {
+      root.render(<B />);
+    });
+    assertConsoleErrorDev([
+      "Can't perform a React state update on a component that hasn't mounted yet. " +
+        'This indicates that you have a side-effect in your render function that ' +
+        'asynchronously later calls tries to update the component. ' +
+        'Move this work to useEffect instead.\n' +
+        '    in B (at **)',
+    ]);
   });
 
+  // @gate !disableLegacyMode
   it('Legacy mode should support setState in componentWillUnmount (#18851)', () => {
     let subscription;
     class A extends React.Component {

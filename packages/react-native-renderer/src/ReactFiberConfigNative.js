@@ -8,12 +8,14 @@
  */
 
 import type {InspectorData, TouchedViewDataAtPoint} from './ReactNativeTypes';
+import type {TransitionTypes} from 'react/src/ReactTransitionType.js';
 
 // Modules provided by RN:
 import {
   ReactNativeViewConfigRegistry,
   UIManager,
   deepFreezeAndThrowOnMutationInDev,
+  type PublicRootInstance,
 } from 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface';
 
 import {create, diff} from './ReactNativeAttributePayload';
@@ -21,20 +23,42 @@ import {
   precacheFiberNode,
   uncacheFiberNode,
   updateFiberProps,
+  getClosestInstanceFromNode,
 } from './ReactNativeComponentTree';
 import ReactNativeFiberHostComponent from './ReactNativeFiberHostComponent';
 
 import {
   DefaultEventPriority,
+  NoEventPriority,
   type EventPriority,
 } from 'react-reconciler/src/ReactEventPriorities';
 import type {Fiber} from 'react-reconciler/src/ReactInternalTypes';
+
+import {REACT_CONTEXT_TYPE} from 'shared/ReactSymbols';
+import type {ReactContext} from 'shared/ReactTypes';
+
+import {
+  getInspectorDataForViewTag,
+  getInspectorDataForViewAtPoint,
+  getInspectorDataForInstance,
+} from './ReactNativeFiberInspector';
+
+export {default as rendererVersion} from 'shared/ReactVersion'; // TODO: Consider exporting the react-native version.
+export const rendererPackageName = 'react-native-renderer';
+export const extraDevToolsConfig = {
+  getInspectorDataForInstance,
+  getInspectorDataForViewTag,
+  getInspectorDataForViewAtPoint,
+};
 
 const {get: getViewConfigForType} = ReactNativeViewConfigRegistry;
 
 export type Type = string;
 export type Props = Object;
-export type Container = number;
+export type Container = {
+  containerTag: number,
+  publicInstance: PublicRootInstance | null,
+};
 export type Instance = ReactNativeFiberHostComponent;
 export type TextInstance = number;
 export type HydratableInstance = Instance | TextInstance;
@@ -123,7 +147,7 @@ export function createInstance(
   UIManager.createView(
     tag, // reactTag
     viewConfig.uiViewClassName, // viewName
-    rootContainerInstance, // rootTag
+    rootContainerInstance.containerTag, // rootTag
     updatePayload, // props
   );
 
@@ -156,7 +180,7 @@ export function createTextInstance(
   UIManager.createView(
     tag, // reactTag
     'RCTRawText', // viewName
-    rootContainerInstance, // rootTag
+    rootContainerInstance.containerTag, // rootTag
     {text: text}, // props
   );
 
@@ -253,8 +277,30 @@ export function shouldSetTextContent(type: string, props: Props): boolean {
   return false;
 }
 
-export function getCurrentEventPriority(): EventPriority {
+let currentUpdatePriority: EventPriority = NoEventPriority;
+export function setCurrentUpdatePriority(newPriority: EventPriority): void {
+  currentUpdatePriority = newPriority;
+}
+
+export function getCurrentUpdatePriority(): EventPriority {
+  return currentUpdatePriority;
+}
+
+export function resolveUpdatePriority(): EventPriority {
+  if (currentUpdatePriority !== NoEventPriority) {
+    return currentUpdatePriority;
+  }
   return DefaultEventPriority;
+}
+
+export function trackSchedulerEvent(): void {}
+
+export function resolveEventType(): null | string {
+  return null;
+}
+
+export function resolveEventTimeStamp(): number {
+  return -1.1;
 }
 
 export function shouldAttemptEagerTransition(): boolean {
@@ -307,7 +353,7 @@ export function appendChildToContainer(
 ): void {
   const childTag = typeof child === 'number' ? child : child._nativeTag;
   UIManager.setChildren(
-    parentInstance, // containerTag
+    parentInstance.containerTag, // containerTag
     [childTag], // reactTags
   );
 }
@@ -335,7 +381,6 @@ export function commitMount(
 
 export function commitUpdate(
   instance: Instance,
-  updatePayloadTODO: Object,
   type: string,
   oldProps: Props,
   newProps: Props,
@@ -438,7 +483,7 @@ export function removeChildFromContainer(
 ): void {
   recursivelyUncacheFiberNode(child);
   UIManager.manageChildren(
-    parentInstance, // containerID
+    parentInstance.containerTag, // containerID
     [], // moveFromIndices
     [], // moveToIndices
     [], // addChildReactTags
@@ -482,6 +527,84 @@ export function unhideInstance(instance: Instance, props: Props): void {
   );
 }
 
+export function applyViewTransitionName(
+  instance: Instance,
+  name: string,
+  className: ?string,
+): void {
+  // Not yet implemented
+}
+
+export function restoreViewTransitionName(
+  instance: Instance,
+  props: Props,
+): void {
+  // Not yet implemented
+}
+
+export function cancelViewTransitionName(
+  instance: Instance,
+  name: string,
+  props: Props,
+): void {
+  // Not yet implemented
+}
+
+export function cancelRootViewTransitionName(rootContainer: Container): void {
+  // Not yet implemented
+}
+
+export function restoreRootViewTransitionName(rootContainer: Container): void {
+  // Not yet implemented
+}
+
+export type InstanceMeasurement = null;
+
+export function measureInstance(instance: Instance): InstanceMeasurement {
+  // This heuristic is better implemented at the native layer.
+  return null;
+}
+
+export function wasInstanceInViewport(
+  measurement: InstanceMeasurement,
+): boolean {
+  return true;
+}
+
+export function hasInstanceChanged(
+  oldMeasurement: InstanceMeasurement,
+  newMeasurement: InstanceMeasurement,
+): boolean {
+  return false;
+}
+
+export function hasInstanceAffectedParent(
+  oldMeasurement: InstanceMeasurement,
+  newMeasurement: InstanceMeasurement,
+): boolean {
+  return false;
+}
+
+export function startViewTransition(
+  rootContainer: Container,
+  transitionTypes: null | TransitionTypes,
+  mutationCallback: () => void,
+  layoutCallback: () => void,
+  afterMutationCallback: () => void,
+  spawnedWorkCallback: () => void,
+  passiveCallback: () => mixed,
+): boolean {
+  return false;
+}
+
+export type ViewTransitionInstance = null | {name: string, ...};
+
+export function createViewTransitionInstance(
+  name: string,
+): ViewTransitionInstance {
+  return null;
+}
+
 export function clearContainer(container: Container): void {
   // TODO Implement this for React Native
   // UIManager does not expose a "remove all" type method.
@@ -494,9 +617,7 @@ export function unhideTextInstance(
   throw new Error('Not yet implemented.');
 }
 
-export function getInstanceFromNode(node: any): empty {
-  throw new Error('Not yet implemented.');
-}
+export {getClosestInstanceFromNode as getInstanceFromNode};
 
 export function beforeActiveInstanceBlur(internalInstanceHandle: Object) {
   // noop
@@ -523,7 +644,7 @@ export function maySuspendCommit(type: Type, props: Props): boolean {
 }
 
 export function preloadInstance(type: Type, props: Props): boolean {
-  // Return true to indicate it's already loaded
+  // Return false to indicate it's already loaded
   return true;
 }
 
@@ -531,8 +652,21 @@ export function startSuspendingCommit(): void {}
 
 export function suspendInstance(type: Type, props: Props): void {}
 
+export function suspendOnActiveViewTransition(container: Container): void {}
+
 export function waitForCommitToBeReady(): null {
   return null;
 }
 
 export const NotPendingTransition: TransitionStatus = null;
+export const HostTransitionContext: ReactContext<TransitionStatus> = {
+  $$typeof: REACT_CONTEXT_TYPE,
+  Provider: (null: any),
+  Consumer: (null: any),
+  _currentValue: NotPendingTransition,
+  _currentValue2: NotPendingTransition,
+  _threadCount: 0,
+};
+
+export type FormInstance = Instance;
+export function resetFormInstance(form: Instance): void {}

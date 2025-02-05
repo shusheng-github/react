@@ -53,6 +53,7 @@ type Destination = {
 
 type RenderState = null;
 type HoistableState = null;
+type PreambleState = null;
 
 const POP = Buffer.from('/', 'utf8');
 
@@ -74,6 +75,9 @@ function write(destination: Destination, buffer: Uint8Array): void {
 }
 
 const ReactNoopServer = ReactFizzServer({
+  scheduleMicrotask(callback: () => void) {
+    callback();
+  },
   scheduleWork(callback: () => void) {
     callback();
   },
@@ -261,9 +265,8 @@ const ReactNoopServer = ReactFizzServer({
     boundary.status = 'client-render';
   },
 
-  prepareHostDispatcher() {},
-
-  writePreamble() {},
+  writePreambleStart() {},
+  writePreambleEnd() {},
   writeHoistables() {},
   writeHoistablesForBoundary() {},
   writePostamble() {},
@@ -272,6 +275,19 @@ const ReactNoopServer = ReactFizzServer({
     return null;
   },
   emitEarlyPreloads() {},
+  createPreambleState(): PreambleState {
+    return null;
+  },
+  canHavePreamble() {
+    return false;
+  },
+  hoistPreambleState() {},
+  isPreambleReady() {
+    return true;
+  },
+  isPreambleContext() {
+    return false;
+  },
 });
 
 type Options = {

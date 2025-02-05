@@ -18,5 +18,6 @@
 // the failure isn't silent.
 
 // 非源码，本地debug源码需要
-export * from './forks/ReactFiberHostConfig.dom'
+// export * from './forks/ReactFiberHostConfig.dom'
+export * from 'react-dom-bindings/src/client/ReactFiberConfigDOM'
 // throw new Error('This module must be shimmed by a specific renderer.');

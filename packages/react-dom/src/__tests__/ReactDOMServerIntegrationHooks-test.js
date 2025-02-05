@@ -27,6 +27,7 @@ let useRef;
 let useImperativeHandle;
 let useInsertionEffect;
 let useLayoutEffect;
+let useResourceEffect;
 let useDebugValue;
 let forwardRef;
 let yieldedValues;
@@ -51,6 +52,7 @@ function initModules() {
   useImperativeHandle = React.useImperativeHandle;
   useInsertionEffect = React.useInsertionEffect;
   useLayoutEffect = React.useLayoutEffect;
+  useResourceEffect = React.experimental_useResourceEffect;
   forwardRef = React.forwardRef;
 
   yieldedValues = [];
@@ -150,7 +152,7 @@ describe('ReactDOMServerHooks', () => {
         '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
         '2. You might be breaking the Rules of Hooks\n' +
         '3. You might have more than one copy of React in the same app\n' +
-        'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
+        'See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.',
     );
 
     itRenders('multiple times when an updater is called', async render => {
@@ -653,6 +655,52 @@ describe('ReactDOMServerHooks', () => {
     });
   });
 
+  describe('useResourceEffect', () => {
+    gate(flags => {
+      if (flags.enableUseResourceEffectHook) {
+        const yields = [];
+        itRenders(
+          'should ignore resource effects on the server',
+          async render => {
+            function Counter(props) {
+              useResourceEffect(
+                () => {
+                  yieldValue('created on client');
+                  return {resource_counter: props.count};
+                },
+                [props.count],
+                resource => {
+                  resource.resource_counter = props.count;
+                  yieldValue('updated on client');
+                },
+                [props.count],
+                () => {
+                  yieldValue('cleanup on client');
+                },
+              );
+              return <Text text={'Count: ' + props.count} />;
+            }
+
+            const domNode = await render(<Counter count={0} />);
+            yields.push(clearLog());
+            expect(domNode.tagName).toEqual('SPAN');
+            expect(domNode.textContent).toEqual('Count: 0');
+          },
+        );
+
+        it('verifies yields in order', () => {
+          expect(yields).toEqual([
+            ['Count: 0'], // server render
+            ['Count: 0'], // server stream
+            ['Count: 0', 'created on client'], // clean render
+            ['Count: 0', 'created on client'], // hydrated render
+            // nothing yielded for bad markup
+          ]);
+        });
+      }
+    });
+  });
+
   describe('useContext', () => {
     itThrowsWhenRendering(
       'if used inside a class component',
@@ -672,7 +720,7 @@ describe('ReactDOMServerHooks', () => {
         '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
         '2. You might be breaking the Rules of Hooks\n' +
         '3. You might have more than one copy of React in the same app\n' +
-        'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
+        'See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.',
     );
   });
 
@@ -775,8 +823,7 @@ describe('ReactDOMServerHooks', () => {
   describe('readContext', () => {
     function readContext(Context) {
       const dispatcher =
-        React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED
-          .ReactCurrentDispatcher.current;
+        React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE.H;
       return dispatcher.readContext(Context);
     }
 

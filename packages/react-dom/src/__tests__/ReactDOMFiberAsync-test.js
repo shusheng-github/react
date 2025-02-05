@@ -19,6 +19,7 @@ let waitForAll;
 let waitFor;
 let waitForMicrotasks;
 let assertLog;
+let assertConsoleErrorDev;
 
 const setUntrackedInputValue = Object.getOwnPropertyDescriptor(
   HTMLInputElement.prototype,
@@ -34,6 +35,8 @@ describe('ReactDOMFiberAsync', () => {
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
     act = require('internal-test-utils').act;
+    assertConsoleErrorDev =
+      require('internal-test-utils').assertConsoleErrorDev;
     Scheduler = require('scheduler');
 
     const InternalTestUtils = require('internal-test-utils');
@@ -50,6 +53,7 @@ describe('ReactDOMFiberAsync', () => {
     document.body.removeChild(container);
   });
 
+  // @gate !disableLegacyMode
   it('renders synchronously by default in legacy mode', () => {
     const ops = [];
     ReactDOM.render(<div>Hi</div>, container, () => {
@@ -175,11 +179,15 @@ describe('ReactDOMFiberAsync', () => {
       root.render(<Component />);
     });
     // Update
-    expect(() => {
-      ReactDOM.flushSync(() => {
-        root.render(<Component />);
-      });
-    }).toErrorDev('flushSync was called from inside a lifecycle method');
+    ReactDOM.flushSync(() => {
+      root.render(<Component />);
+    });
+    assertConsoleErrorDev([
+      'flushSync was called from inside a lifecycle method. ' +
+        'React cannot flush when React is already rendering. ' +
+        'Consider moving this call to a scheduler task or micro task.\n' +
+        '    in Component (at **)',
+    ]);
   });
 
   describe('concurrent mode', () => {
@@ -312,21 +320,12 @@ describe('ReactDOMFiberAsync', () => {
         assertLog([]);
       });
       // Only the active updates have flushed
-      if (gate(flags => flags.enableUnifiedSyncLane)) {
-        expect(container.textContent).toEqual('ABC');
-        assertLog(['ABC']);
-      } else {
-        expect(container.textContent).toEqual('BC');
-        assertLog(['BC']);
-      }
+      expect(container.textContent).toEqual('ABC');
+      assertLog(['ABC']);
 
       await act(() => {
         instance.push('D');
-        if (gate(flags => flags.enableUnifiedSyncLane)) {
-          expect(container.textContent).toEqual('ABC');
-        } else {
-          expect(container.textContent).toEqual('BC');
-        }
+        expect(container.textContent).toEqual('ABC');
         assertLog([]);
       });
       assertLog(['ABCD']);
@@ -752,7 +751,7 @@ describe('ReactDOMFiberAsync', () => {
       // Because it suspended, it remains on the current path
       expect(div.textContent).toBe('/path/a');
     });
-    assertLog(['Suspend! [/path/b]']);
+    assertLog(gate('enableSiblingPrerendering') ? ['Suspend! [/path/b]'] : []);
 
     await act(async () => {
       resolvePromise();

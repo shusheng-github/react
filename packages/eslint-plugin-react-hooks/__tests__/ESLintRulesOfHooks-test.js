@@ -3,21 +3,16 @@
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
+ *
+ * @jest-environment node
  */
 
 'use strict';
 
-const ESLintTester = require('eslint').RuleTester;
+const ESLintTesterV7 = require('eslint-v7').RuleTester;
+const ESLintTesterV9 = require('eslint-v9').RuleTester;
 const ReactHooksESLintPlugin = require('eslint-plugin-react-hooks');
 const ReactHooksESLintRule = ReactHooksESLintPlugin.rules['rules-of-hooks'];
-
-ESLintTester.setDefaultConfig({
-  parser: require.resolve('babel-eslint'),
-  parserOptions: {
-    ecmaVersion: 6,
-    sourceType: 'module',
-  },
-});
 
 /**
  * A string template tag that removes padding from the left side of multi-line strings
@@ -554,6 +549,18 @@ const tests = {
       // TODO: this should error but doesn't.
       // errors: [genericError('useState')],
     },
+    {
+      code: normalizeIndent`
+        // Valid because the hook is outside of the loop
+        const Component = () => {
+          const [state, setState] = useState(0);
+          for (let i = 0; i < 10; i++) {
+            console.log(i);
+          }
+          return <div></div>;
+        };
+      `,
+    },
   ],
   invalid: [
     {
@@ -763,6 +770,30 @@ const tests = {
       code: normalizeIndent`
         // Invalid because it's dangerous and might not warn otherwise.
         // This *must* be invalid.
+        function ComponentWithHookInsideLoop() {
+          do {
+            useHookInsideLoop();
+          } while (cond);
+        }
+      `,
+      errors: [loopError('useHookInsideLoop')],
+    },
+    {
+      code: normalizeIndent`
+        // Invalid because it's dangerous and might not warn otherwise.
+        // This *must* be invalid.
+        function ComponentWithHookInsideLoop() {
+          do {
+            foo();
+          } while (useHookInsideLoop());
+        }
+      `,
+      errors: [loopError('useHookInsideLoop')],
+    },
+    {
+      code: normalizeIndent`
+        // Invalid because it's dangerous and might not warn otherwise.
+        // This *must* be invalid.
         function renderItem() {
           useState();
         }
@@ -853,6 +884,45 @@ const tests = {
             if (b) continue;
             useHook2();
           }
+        }
+      `,
+      errors: [loopError('useHook1'), loopError('useHook2', true)],
+    },
+    {
+      code: normalizeIndent`
+        // Invalid because it's dangerous and might not warn otherwise.
+        // This *must* be invalid.
+        function useHookInLoops() {
+          do {
+            useHook1();
+            if (a) return;
+            useHook2();
+          } while (b);
+
+          do {
+            useHook3();
+            if (c) return;
+            useHook4();
+          } while (d)
+        }
+      `,
+      errors: [
+        loopError('useHook1'),
+        loopError('useHook2'),
+        loopError('useHook3'),
+        loopError('useHook4'),
+      ],
+    },
+    {
+      code: normalizeIndent`
+        // Invalid because it's dangerous and might not warn otherwise.
+        // This *must* be invalid.
+        function useHookInLoops() {
+          do {
+            useHook1();
+            if (a) continue;
+            useHook2();
+          } while (b);
         }
       `,
       errors: [loopError('useHook1'), loopError('useHook2', true)],
@@ -1132,6 +1202,34 @@ const tests = {
         }
       `,
       errors: [asyncComponentHookError('useState')],
+    },
+    {
+      code: normalizeIndent`
+        async function Page() {
+          useId();
+          React.useId();
+        }
+      `,
+      errors: [
+        asyncComponentHookError('useId'),
+        asyncComponentHookError('React.useId'),
+      ],
+    },
+    {
+      code: normalizeIndent`
+        async function useAsyncHook() {
+          useId();
+        }
+      `,
+      errors: [asyncComponentHookError('useId')],
+    },
+    {
+      code: normalizeIndent`
+        async function notAHook() {
+          useId();
+        }
+      `,
+      errors: [functionError('useId', 'notAHook')],
     },
     {
       code: normalizeIndent`
@@ -1461,5 +1559,118 @@ if (!process.env.CI) {
   tests.invalid = tests.invalid.filter(predicate);
 }
 
-const eslintTester = new ESLintTester();
-eslintTester.run('react-hooks', ReactHooksESLintRule, tests);
+describe('rules-of-hooks/rules-of-hooks', () => {
+  const parserOptionsV7 = {
+    ecmaFeatures: {
+      jsx: true,
+    },
+    ecmaVersion: 6,
+    sourceType: 'module',
+  };
+
+  const languageOptionsV9 = {
+    ecmaVersion: 6,
+    sourceType: 'module',
+    parserOptions: {
+      ecmaFeatures: {
+        jsx: true,
+      },
+    },
+  };
+
+  new ESLintTesterV7({
+    parser: require.resolve('babel-eslint'),
+    parserOptions: parserOptionsV7,
+  }).run('eslint: v7, parser: babel-eslint', ReactHooksESLintRule, tests);
+
+  new ESLintTesterV9({
+    languageOptions: {
+      ...languageOptionsV9,
+      parser: require('@babel/eslint-parser'),
+    },
+  }).run(
+    'eslint: v9, parser: @babel/eslint-parser',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV7({
+    parser: require.resolve('@typescript-eslint/parser-v2'),
+    parserOptions: parserOptionsV7,
+  }).run(
+    'eslint: v7, parser: @typescript-eslint/parser@2.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV9({
+    languageOptions: {
+      ...languageOptionsV9,
+      parser: require('@typescript-eslint/parser-v2'),
+    },
+  }).run(
+    'eslint: v9, parser: @typescript-eslint/parser@2.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV7({
+    parser: require.resolve('@typescript-eslint/parser-v3'),
+    parserOptions: parserOptionsV7,
+  }).run(
+    'eslint: v7, parser: @typescript-eslint/parser@3.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV9({
+    languageOptions: {
+      ...languageOptionsV9,
+      parser: require('@typescript-eslint/parser-v3'),
+    },
+  }).run(
+    'eslint: v9, parser: @typescript-eslint/parser@3.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV7({
+    parser: require.resolve('@typescript-eslint/parser-v4'),
+    parserOptions: parserOptionsV7,
+  }).run(
+    'eslint: v7, parser: @typescript-eslint/parser@4.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV9({
+    languageOptions: {
+      ...languageOptionsV9,
+      parser: require('@typescript-eslint/parser-v4'),
+    },
+  }).run(
+    'eslint: v9, parser: @typescript-eslint/parser@4.x',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV7({
+    parser: require.resolve('@typescript-eslint/parser-v5'),
+    parserOptions: parserOptionsV7,
+  }).run(
+    'eslint: v7, parser: @typescript-eslint/parser@^5.0.0-0',
+    ReactHooksESLintRule,
+    tests
+  );
+
+  new ESLintTesterV9({
+    languageOptions: {
+      ...languageOptionsV9,
+      parser: require('@typescript-eslint/parser-v5'),
+    },
+  }).run(
+    'eslint: v9, parser: @typescript-eslint/parser@^5.0.0',
+    ReactHooksESLintRule,
+    tests
+  );
+});

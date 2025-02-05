@@ -10,6 +10,7 @@
 'use strict';
 
 import {insertNodesAndExecuteScripts} from '../test-utils/FizzTestUtils';
+import {patchMessageChannel} from '../../../../scripts/jest/patchMessageChannel';
 
 // Polyfills for test environment
 global.ReadableStream =
@@ -23,25 +24,44 @@ let ReactDOMServer;
 let ReactDOMClient;
 let useFormStatus;
 let useOptimistic;
-let useFormState;
+let useActionState;
+let Scheduler;
+let assertConsoleErrorDev;
 
 describe('ReactDOMFizzForm', () => {
   beforeEach(() => {
     jest.resetModules();
+    Scheduler = require('scheduler');
+    patchMessageChannel(Scheduler);
     React = require('react');
     ReactDOMServer = require('react-dom/server.browser');
     ReactDOMClient = require('react-dom/client');
     useFormStatus = require('react-dom').useFormStatus;
-    useFormState = require('react-dom').useFormState;
     useOptimistic = require('react').useOptimistic;
     act = require('internal-test-utils').act;
+    assertConsoleErrorDev =
+      require('internal-test-utils').assertConsoleErrorDev;
     container = document.createElement('div');
     document.body.appendChild(container);
+    // TODO: Test the old api but it warns so needs warnings to be asserted.
+    // if (__VARIANT__) {
+    // Remove after API is deleted.
+    // useActionState = require('react-dom').useFormState;
+    // }
+    useActionState = require('react').useActionState;
   });
 
   afterEach(() => {
     document.body.removeChild(container);
   });
+
+  async function serverAct(callback) {
+    let maybePromise;
+    await act(() => {
+      maybePromise = callback();
+    });
+    return maybePromise;
+  }
 
   function submit(submitter) {
     const form = submitter.form || submitter;
@@ -76,7 +96,6 @@ describe('ReactDOMFizzForm', () => {
     insertNodesAndExecuteScripts(temp, container, null);
   }
 
-  // @gate enableFormActions
   it('should allow passing a function to form action during SSR', async () => {
     const ref = React.createRef();
     let foo;
@@ -92,7 +111,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     await act(async () => {
       ReactDOMClient.hydrateRoot(container, <App />);
@@ -103,7 +124,6 @@ describe('ReactDOMFizzForm', () => {
     expect(foo).toBe('bar');
   });
 
-  // @gate enableFormActions
   it('should allow passing a function to an input/button formAction', async () => {
     const inputRef = React.createRef();
     const buttonRef = React.createRef();
@@ -140,7 +160,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     await act(async () => {
       ReactDOMClient.hydrateRoot(container, <App />);
@@ -162,7 +184,6 @@ describe('ReactDOMFizzForm', () => {
     expect(rootActionCalled).toBe(false);
   });
 
-  // @gate enableFormActions || !__DEV__
   it('should warn when passing a function action during SSR and string during hydration', async () => {
     function action(formData) {}
     function App({isClient}) {
@@ -173,18 +194,34 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
-    await expect(async () => {
-      await act(async () => {
-        ReactDOMClient.hydrateRoot(container, <App isClient={true} />);
-      });
-    }).toErrorDev(
-      'Prop `action` did not match. Server: "function" Client: "action"',
+    await act(async () => {
+      ReactDOMClient.hydrateRoot(container, <App isClient={true} />);
+    });
+    assertConsoleErrorDev(
+      [
+        "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
+          "This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n" +
+          "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
+          "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
+          "- Date formatting in a user's locale which doesn't match the server.\n" +
+          '- External changing data without sending a snapshot of it along with the HTML.\n' +
+          '- Invalid HTML tag nesting.\n\n' +
+          'It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.\n\n' +
+          'https://react.dev/link/hydration-mismatch\n\n' +
+          '  <App isClient={true}>\n' +
+          '    <form\n' +
+          '+     action="action"\n' +
+          '-     action="function"\n' +
+          '    >\n',
+      ],
+      {withoutStack: true},
     );
   });
 
-  // @gate enableFormActions || !__DEV__
   it('should ideally warn when passing a string during SSR and function during hydration', async () => {
     function action(formData) {}
     function App({isClient}) {
@@ -195,7 +232,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     // This should ideally warn because only the client provides a function that doesn't line up.
     await act(async () => {
@@ -203,7 +242,6 @@ describe('ReactDOMFizzForm', () => {
     });
   });
 
-  // @gate enableFormActions || !__DEV__
   it('should reset form fields after you update away from hydrated function', async () => {
     const formRef = React.createRef();
     const inputRef = React.createRef();
@@ -230,7 +268,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     let root;
     await act(async () => {
@@ -259,7 +299,6 @@ describe('ReactDOMFizzForm', () => {
     expect(buttonRef.current.hasAttribute('formTarget')).toBe(false);
   });
 
-  // @gate enableFormActions || !__DEV__
   it('should reset form fields after you remove a hydrated function', async () => {
     const formRef = React.createRef();
     const inputRef = React.createRef();
@@ -278,7 +317,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     let root;
     await act(async () => {
@@ -305,7 +346,6 @@ describe('ReactDOMFizzForm', () => {
     expect(buttonRef.current.hasAttribute('formTarget')).toBe(false);
   });
 
-  // @gate enableFormActions || !__DEV__
   it('should restore the form fields even if they were incorrectly set', async () => {
     const formRef = React.createRef();
     const inputRef = React.createRef();
@@ -334,19 +374,59 @@ describe('ReactDOMFizzForm', () => {
 
     // Specifying the extra form fields are a DEV error, but we expect it
     // to eventually still be patched up after an update.
-    await expect(async () => {
-      const stream = await ReactDOMServer.renderToReadableStream(<App />);
-      await readIntoContainer(stream);
-    }).toErrorDev([
-      'Cannot specify a encType or method for a form that specifies a function as the action.',
-      'Cannot specify a formTarget for a button that specifies a function as a formAction.',
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
+    await readIntoContainer(stream);
+    assertConsoleErrorDev([
+      'Cannot specify a encType or method for a form that specifies a function as the action. ' +
+        'React provides those automatically. They will get overridden.\n' +
+        '    in form (at **)\n' +
+        '    in App (at **)',
+      'Cannot specify a formTarget for a button that specifies a function as a formAction. ' +
+        'The function will always be executed in the same window.\n' +
+        '    in input (at **)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in form (at **)\n') +
+        '    in App (at **)',
     ]);
     let root;
-    await expect(async () => {
-      await act(async () => {
-        root = ReactDOMClient.hydrateRoot(container, <App />);
-      });
-    }).toErrorDev(['Prop `formTarget` did not match.']);
+    await act(async () => {
+      root = ReactDOMClient.hydrateRoot(container, <App />);
+    });
+    assertConsoleErrorDev(
+      [
+        "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
+          "This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n" +
+          "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
+          "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
+          "- Date formatting in a user's locale which doesn't match the server.\n" +
+          '- External changing data without sending a snapshot of it along with the HTML.\n' +
+          '- Invalid HTML tag nesting.\n\n' +
+          'It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.\n\n' +
+          'https://react.dev/link/hydration-mismatch\n\n' +
+          '  <App>\n' +
+          '    <form\n' +
+          '      action={function action}\n' +
+          '      ref={{current:null}}\n' +
+          '+     method="DELETE"\n' +
+          '-     method={null}\n' +
+          '    >\n' +
+          '      <input\n' +
+          '        type="submit"\n' +
+          '        formAction={function action}\n' +
+          '        ref={{current:null}}\n' +
+          '+       formTarget="elsewhere"\n' +
+          '-       formTarget={null}\n' +
+          '      >\n' +
+          '      <button\n' +
+          '        formAction={function action}\n' +
+          '        ref={{current:null}}\n' +
+          '+       formEncType="text/plain"\n' +
+          '-       formEncType={null}\n' +
+          '      >\n',
+      ],
+      {withoutStack: true},
+    );
     await act(async () => {
       root.render(<App isUpdate={true} />);
     });
@@ -368,15 +448,15 @@ describe('ReactDOMFizzForm', () => {
     expect(buttonRef.current.hasAttribute('formTarget')).toBe(false);
   });
 
-  // @gate enableFormActions
-  // @gate enableAsyncActions
   it('useFormStatus is not pending during server render', async () => {
     function App() {
       const {pending} = useFormStatus();
       return 'Pending: ' + pending;
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     expect(container.textContent).toBe('Pending: false');
 
@@ -384,7 +464,6 @@ describe('ReactDOMFizzForm', () => {
     expect(container.textContent).toBe('Pending: false');
   });
 
-  // @gate enableFormActions
   it('should replay a form action after hydration', async () => {
     let foo;
     function action(formData) {
@@ -398,7 +477,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
 
     // Dispatch an event before hydration
@@ -412,7 +493,6 @@ describe('ReactDOMFizzForm', () => {
     expect(foo).toBe('bar');
   });
 
-  // @gate enableFormActions
   it('should replay input/button formAction', async () => {
     let rootActionCalled = false;
     let savedTitle = null;
@@ -440,7 +520,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
 
     submit(container.getElementsByTagName('input')[1]);
@@ -455,14 +537,15 @@ describe('ReactDOMFizzForm', () => {
     expect(rootActionCalled).toBe(false);
   });
 
-  // @gate enableAsyncActions
   it('useOptimistic returns passthrough value', async () => {
     function App() {
       const [optimisticState] = useOptimistic('hi');
       return optimisticState;
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     expect(container.textContent).toBe('hi');
 
@@ -472,19 +555,19 @@ describe('ReactDOMFizzForm', () => {
     expect(container.textContent).toBe('hi');
   });
 
-  // @gate enableFormActions
-  // @gate enableAsyncActions
-  it('useFormState returns initial state', async () => {
+  it('useActionState returns initial state', async () => {
     async function action(state) {
       return state;
     }
 
     function App() {
-      const [state] = useFormState(action, 0);
+      const [state] = useActionState(action, 0);
       return state;
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
     expect(container.textContent).toBe('0');
 
@@ -494,7 +577,6 @@ describe('ReactDOMFizzForm', () => {
     expect(container.textContent).toBe('0');
   });
 
-  // @gate enableFormActions
   it('can provide a custom action on the server for actions', async () => {
     const ref = React.createRef();
     let foo;
@@ -522,7 +604,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
 
     const form = container.firstChild;
@@ -546,7 +630,6 @@ describe('ReactDOMFizzForm', () => {
     expect(foo).toBe('bar');
   });
 
-  // @gate enableFormActions
   it('can provide a custom action on buttons the server for actions', async () => {
     const hiddenRef = React.createRef();
     const inputRef = React.createRef();
@@ -583,7 +666,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
 
     const input = container.getElementsByTagName('input')[1];
@@ -626,7 +711,6 @@ describe('ReactDOMFizzForm', () => {
     expect(foo).toBe('bar');
   });
 
-  // @gate enableFormActions
   it('can hydrate hidden fields in the beginning of a form', async () => {
     const hiddenRef = React.createRef();
 
@@ -654,7 +738,9 @@ describe('ReactDOMFizzForm', () => {
       );
     }
 
-    const stream = await ReactDOMServer.renderToReadableStream(<App />);
+    const stream = await serverAct(() =>
+      ReactDOMServer.renderToReadableStream(<App />),
+    );
     await readIntoContainer(stream);
 
     const barField = container.querySelector('[name=bar]');

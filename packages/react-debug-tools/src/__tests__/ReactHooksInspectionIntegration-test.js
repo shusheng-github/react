@@ -11,10 +11,10 @@
 'use strict';
 
 let React;
-let ReactDOM;
 let ReactTestRenderer;
 let ReactDebugTools;
 let act;
+let assertConsoleErrorDev;
 let useMemoCache;
 
 function normalizeSourceLoc(tree) {
@@ -34,10 +34,9 @@ describe('ReactHooksInspectionIntegration', () => {
     jest.resetModules();
     React = require('react');
     ReactTestRenderer = require('react-test-renderer');
-    ReactDOM = require('react-dom');
-    act = require('internal-test-utils').act;
+    ({act, assertConsoleErrorDev} = require('internal-test-utils'));
     ReactDebugTools = require('react-debug-tools');
-    useMemoCache = React.unstable_useMemoCache;
+    useMemoCache = require('react/compiler-runtime').c;
   });
 
   it('should inspect the current state of useState hooks', async () => {
@@ -51,7 +50,12 @@ describe('ReactHooksInspectionIntegration', () => {
         </div>
       );
     }
-    const renderer = ReactTestRenderer.create(<Foo prop="prop" />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo prop="prop" />, {
+        unstable_isConcurrent: true,
+      });
+    });
 
     let childFiber = renderer.root.findByType(Foo)._currentFiber();
     let tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
@@ -179,14 +183,10 @@ describe('ReactHooksInspectionIntegration', () => {
       React.useLayoutEffect(effect);
       React.useEffect(effect);
 
-      React.useImperativeHandle(
-        outsideRef,
-        () => {
-          // Return a function so that jest treats them as non-equal.
-          return function Instance() {};
-        },
-        [],
-      );
+      React.useImperativeHandle(outsideRef, () => {
+        // Return a function so that jest treats them as non-equal.
+        return function Instance() {};
+      }, []);
 
       React.useMemo(() => state1 + state2, [state1]);
 
@@ -204,7 +204,9 @@ describe('ReactHooksInspectionIntegration', () => {
     }
     let renderer;
     await act(() => {
-      renderer = ReactTestRenderer.create(<Foo prop="prop" />);
+      renderer = ReactTestRenderer.create(<Foo prop="prop" />, {
+        unstable_isConcurrent: true,
+      });
     });
 
     let childFiber = renderer.root.findByType(Foo)._currentFiber();
@@ -434,7 +436,7 @@ describe('ReactHooksInspectionIntegration', () => {
           "isStateEditable": false,
           "name": "Memo",
           "subHooks": [],
-          "value": "Ab",
+          "value": "AB",
         },
         {
           "debugInfo": null,
@@ -467,14 +469,10 @@ describe('ReactHooksInspectionIntegration', () => {
       React.useLayoutEffect(effect);
       React.useEffect(effect);
 
-      React.useImperativeHandle(
-        outsideRef,
-        () => {
-          // Return a function so that jest treats them as non-equal.
-          return function Instance() {};
-        },
-        [],
-      );
+      React.useImperativeHandle(outsideRef, () => {
+        // Return a function so that jest treats them as non-equal.
+        return function Instance() {};
+      }, []);
 
       React.useMemo(() => state1 + state2, [state1]);
 
@@ -492,7 +490,9 @@ describe('ReactHooksInspectionIntegration', () => {
     }
     let renderer;
     await act(() => {
-      renderer = ReactTestRenderer.create(<Foo prop="prop" />);
+      renderer = ReactTestRenderer.create(<Foo prop="prop" />, {
+        unstable_isConcurrent: true,
+      });
     });
 
     let childFiber = renderer.root.findByType(Foo)._currentFiber();
@@ -750,7 +750,7 @@ describe('ReactHooksInspectionIntegration', () => {
           "isStateEditable": false,
           "name": "Memo",
           "subHooks": [],
-          "value": "Ab",
+          "value": "AB",
         },
         {
           "debugInfo": null,
@@ -770,7 +770,7 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should inspect the value of the current provider in useContext', () => {
+  it('should inspect the value of the current provider in useContext', async () => {
     const MyContext = React.createContext('default');
     const ThemeContext = React.createContext('default');
     ThemeContext.displayName = 'Theme';
@@ -779,11 +779,15 @@ describe('ReactHooksInspectionIntegration', () => {
       React.useContext(ThemeContext);
       return <div>{value}</div>;
     }
-    const renderer = ReactTestRenderer.create(
-      <MyContext.Provider value="contextual">
-        <Foo prop="prop" />
-      </MyContext.Provider>,
-    );
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(
+        <MyContext.Provider value="contextual">
+          <Foo prop="prop" />
+        </MyContext.Provider>,
+        {unstable_isConcurrent: true},
+      );
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -820,14 +824,58 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should inspect forwardRef', () => {
+  // @reactVersion >= 16.8
+  it('should inspect the value of the current provider in useContext reading the same context multiple times', async () => {
+    const ContextA = React.createContext('default A');
+    const ContextB = React.createContext('default B');
+    function Foo(props) {
+      React.useContext(ContextA);
+      React.useContext(ContextA);
+      React.useContext(ContextB);
+      React.useContext(ContextB);
+      React.useContext(ContextA);
+      React.useContext(ContextB);
+      React.useContext(ContextB);
+      React.useContext(ContextB);
+      return null;
+    }
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(
+        <ContextA.Provider value="contextual A">
+          <Foo prop="prop" />
+        </ContextA.Provider>,
+        {unstable_isConcurrent: true},
+      );
+    });
+    const childFiber = renderer.root.findByType(Foo)._currentFiber();
+    const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+
+    expect(normalizeSourceLoc(tree)).toEqual([
+      expect.objectContaining({value: 'contextual A'}),
+      expect.objectContaining({value: 'contextual A'}),
+      expect.objectContaining({value: 'default B'}),
+      expect.objectContaining({value: 'default B'}),
+      expect.objectContaining({value: 'contextual A'}),
+      expect.objectContaining({value: 'default B'}),
+      expect.objectContaining({value: 'default B'}),
+      expect.objectContaining({value: 'default B'}),
+    ]);
+  });
+
+  it('should inspect forwardRef', async () => {
     const obj = function () {};
     const Foo = React.forwardRef(function (props, ref) {
       React.useImperativeHandle(ref, () => obj);
       return <div />;
     });
     const ref = React.createRef();
-    const renderer = ReactTestRenderer.create(<Foo ref={ref} />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo ref={ref} />, {
+        unstable_isConcurrent: true,
+      });
+    });
 
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
@@ -851,13 +899,18 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should inspect memo', () => {
+  it('should inspect memo', async () => {
     function InnerFoo(props) {
       const [value] = React.useState('hello');
       return <div>{value}</div>;
     }
     const Foo = React.memo(InnerFoo);
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     // TODO: Test renderer findByType is broken for memo. Have to search for the inner.
     const childFiber = renderer.root.findByType(InnerFoo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
@@ -881,7 +934,7 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should inspect custom hooks', () => {
+  it('should inspect custom hooks', async () => {
     function useCustom() {
       const [value] = React.useState('hello');
       return value;
@@ -890,7 +943,12 @@ describe('ReactHooksInspectionIntegration', () => {
       const value = useCustom();
       return <div>{value}</div>;
     }
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -928,14 +986,19 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support composite useTransition hook', () => {
+  it('should support composite useTransition hook', async () => {
     function Foo(props) {
       React.useTransition();
       const memoizedValue = React.useMemo(() => 'hello', []);
       React.useMemo(() => 'not used', []);
       return <div>{memoizedValue}</div>;
     }
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -952,7 +1015,7 @@ describe('ReactHooksInspectionIntegration', () => {
           "isStateEditable": false,
           "name": "Transition",
           "subHooks": [],
-          "value": undefined,
+          "value": false,
         },
         {
           "debugInfo": null,
@@ -986,14 +1049,181 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support useDeferredValue hook', () => {
+  it('should update isPending returned from useTransition', async () => {
+    const IndefiniteSuspender = React.lazy(() => new Promise(() => {}));
+    let startTransition;
+    function Foo(props) {
+      const [show, setShow] = React.useState(false);
+      const [isPending, _startTransition] = React.useTransition();
+      React.useMemo(() => 'hello', []);
+      React.useMemo(() => 'not used', []);
+
+      // Otherwise we capture the version from the react-debug-tools dispatcher.
+      if (startTransition === undefined) {
+        startTransition = () => {
+          _startTransition(() => {
+            setShow(true);
+          });
+        };
+      }
+
+      return (
+        <React.Suspense fallback="Loading">
+          {isPending ? 'Pending' : null}
+          {show ? <IndefiniteSuspender /> : null}
+        </React.Suspense>
+      );
+    }
+    const renderer = await act(() => {
+      return ReactTestRenderer.create(<Foo />, {unstable_isConcurrent: true});
+    });
+    expect(renderer).toMatchRenderedOutput(null);
+    let childFiber = renderer.root.findByType(Foo)._currentFiber();
+    let tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+    expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
+      [
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 0,
+          "isStateEditable": true,
+          "name": "State",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 1,
+          "isStateEditable": false,
+          "name": "Transition",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 2,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "hello",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 3,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "not used",
+        },
+      ]
+    `);
+
+    await act(() => {
+      startTransition();
+    });
+
+    expect(renderer).toMatchRenderedOutput('Pending');
+
+    childFiber = renderer.root.findByType(Foo)._currentFiber();
+    tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+    expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
+      [
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 0,
+          "isStateEditable": true,
+          "name": "State",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 1,
+          "isStateEditable": false,
+          "name": "Transition",
+          "subHooks": [],
+          "value": true,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 2,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "hello",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 3,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "not used",
+        },
+      ]
+    `);
+  });
+
+  it('should support useDeferredValue hook', async () => {
     function Foo(props) {
       React.useDeferredValue('abc');
       const memoizedValue = React.useMemo(() => 1, []);
       React.useMemo(() => 2, []);
       return <div>{memoizedValue}</div>;
     }
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -1044,14 +1274,277 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support useId hook', () => {
+  it('should return the deferred value', async () => {
+    let unsuspend;
+    function Lazy() {
+      return 'Lazy';
+    }
+    const Suspender = React.lazy(
+      () =>
+        new Promise(resolve => {
+          unsuspend = () => resolve({default: Lazy});
+        }),
+    );
+    const Context = React.createContext('default');
+    let setShow;
+    function Foo(props) {
+      const [show, _setShow] = React.useState(false);
+      const deferredShow = React.useDeferredValue(show);
+      const isPending = show !== deferredShow;
+      const contextDisplay = isPending ? React.use(Context) : '<none>';
+      React.useMemo(() => 'hello', []);
+      React.useMemo(() => 'not used', []);
+
+      // Otherwise we capture the version from the react-debug-tools dispatcher.
+      if (setShow === undefined) {
+        setShow = _setShow;
+      }
+
+      return (
+        <React.Suspense fallback="Loading">
+          Context: {contextDisplay}, {isPending ? 'Pending' : 'Nothing Pending'}
+          {deferredShow ? [', ', <Suspender key="suspender" />] : null}
+        </React.Suspense>
+      );
+    }
+    const renderer = await act(() => {
+      return ReactTestRenderer.create(
+        <Context.Provider value="provided">
+          <Foo />
+        </Context.Provider>,
+        {unstable_isConcurrent: true},
+      );
+    });
+    let childFiber = renderer.root.findByType(Foo)._currentFiber();
+    let tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+    expect(renderer).toMatchRenderedOutput('Context: <none>, Nothing Pending');
+    expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
+      [
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 0,
+          "isStateEditable": true,
+          "name": "State",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 1,
+          "isStateEditable": false,
+          "name": "DeferredValue",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 2,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "hello",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 3,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "not used",
+        },
+      ]
+    `);
+
+    await act(() => {
+      setShow(true);
+    });
+
+    expect(renderer).toMatchRenderedOutput('Context: provided, Pending');
+    childFiber = renderer.root.findByType(Foo)._currentFiber();
+    tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+    expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
+      [
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 0,
+          "isStateEditable": true,
+          "name": "State",
+          "subHooks": [],
+          "value": true,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 1,
+          "isStateEditable": false,
+          "name": "DeferredValue",
+          "subHooks": [],
+          "value": false,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": null,
+          "isStateEditable": false,
+          "name": "Context",
+          "subHooks": [],
+          "value": "provided",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 2,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "hello",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 3,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "not used",
+        },
+      ]
+    `);
+
+    await act(() => {
+      unsuspend();
+    });
+
+    expect(renderer).toMatchRenderedOutput(
+      'Context: <none>, Nothing Pending, Lazy',
+    );
+    childFiber = renderer.root.findByType(Foo)._currentFiber();
+    tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
+    expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
+      [
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 0,
+          "isStateEditable": true,
+          "name": "State",
+          "subHooks": [],
+          "value": true,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 1,
+          "isStateEditable": false,
+          "name": "DeferredValue",
+          "subHooks": [],
+          "value": true,
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 2,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "hello",
+        },
+        {
+          "debugInfo": null,
+          "hookSource": {
+            "columnNumber": 0,
+            "fileName": "**",
+            "functionName": "Foo",
+            "lineNumber": 0,
+          },
+          "id": 3,
+          "isStateEditable": false,
+          "name": "Memo",
+          "subHooks": [],
+          "value": "not used",
+        },
+      ]
+    `);
+  });
+
+  it('should support useId hook', async () => {
     function Foo(props) {
       const id = React.useId();
       const [state] = React.useState('hello');
       return <div id={id}>{state}</div>;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
 
@@ -1081,8 +1574,7 @@ describe('ReactHooksInspectionIntegration', () => {
   });
 
   describe('useMemoCache', () => {
-    // @gate enableUseMemoCacheHook
-    it('should not be inspectable', () => {
+    it('should not be inspectable', async () => {
       function Foo() {
         const $ = useMemoCache(1);
         let t0;
@@ -1097,15 +1589,19 @@ describe('ReactHooksInspectionIntegration', () => {
         return t0;
       }
 
-      const renderer = ReactTestRenderer.create(<Foo />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Foo />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Foo)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
 
       expect(tree.length).toEqual(0);
     });
 
-    // @gate enableUseMemoCacheHook
-    it('should work in combination with other hooks', () => {
+    it('should work in combination with other hooks', async () => {
       function useSomething() {
         const [something] = React.useState(null);
         const changeOtherSomething = React.useCallback(() => {}, [something]);
@@ -1132,7 +1628,12 @@ describe('ReactHooksInspectionIntegration', () => {
         return t0;
       }
 
-      const renderer = ReactTestRenderer.create(<Foo />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Foo />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Foo)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
 
@@ -1141,7 +1642,7 @@ describe('ReactHooksInspectionIntegration', () => {
   });
 
   describe('useDebugValue', () => {
-    it('should support inspectable values for multiple custom hooks', () => {
+    it('should support inspectable values for multiple custom hooks', async () => {
       function useLabeledValue(label) {
         const [value] = React.useState(label);
         React.useDebugValue(`custom label ${label}`);
@@ -1158,7 +1659,12 @@ describe('ReactHooksInspectionIntegration', () => {
         useLabeledValue('d');
         return null;
       }
-      const renderer = ReactTestRenderer.create(<Example />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Example />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Example)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
       if (__DEV__) {
@@ -1375,7 +1881,7 @@ describe('ReactHooksInspectionIntegration', () => {
         `);
     });
 
-    it('should support inspectable values for nested custom hooks', () => {
+    it('should support inspectable values for nested custom hooks', async () => {
       function useInner() {
         React.useDebugValue('inner');
         React.useState(0);
@@ -1388,7 +1894,12 @@ describe('ReactHooksInspectionIntegration', () => {
         useOuter();
         return null;
       }
-      const renderer = ReactTestRenderer.create(<Example />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Example />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Example)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
       if (__DEV__) {
@@ -1491,7 +2002,7 @@ describe('ReactHooksInspectionIntegration', () => {
         `);
     });
 
-    it('should support multiple inspectable values per custom hooks', () => {
+    it('should support multiple inspectable values per custom hooks', async () => {
       function useMultiLabelCustom() {
         React.useDebugValue('one');
         React.useDebugValue('two');
@@ -1508,7 +2019,12 @@ describe('ReactHooksInspectionIntegration', () => {
         useSingleLabelCustom('two');
         return null;
       }
-      const renderer = ReactTestRenderer.create(<Example />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Example />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Example)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
       if (__DEV__) {
@@ -1701,18 +2217,23 @@ describe('ReactHooksInspectionIntegration', () => {
         `);
     });
 
-    it('should ignore useDebugValue() made outside of a custom hook', () => {
+    it('should ignore useDebugValue() made outside of a custom hook', async () => {
       function Example() {
         React.useDebugValue('this is invalid');
         return null;
       }
-      const renderer = ReactTestRenderer.create(<Example />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Example />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Example)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
       expect(tree).toHaveLength(0);
     });
 
-    it('should support an optional formatter function param', () => {
+    it('should support an optional formatter function param', async () => {
       function useCustom() {
         React.useDebugValue({bar: 123}, object => `bar:${object.bar}`);
         React.useState(0);
@@ -1721,7 +2242,12 @@ describe('ReactHooksInspectionIntegration', () => {
         useCustom();
         return null;
       }
-      const renderer = ReactTestRenderer.create(<Example />);
+      let renderer;
+      await act(() => {
+        renderer = ReactTestRenderer.create(<Example />, {
+          unstable_isConcurrent: true,
+        });
+      });
       const childFiber = renderer.root.findByType(Example)._currentFiber();
       const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
       if (__DEV__) {
@@ -1795,6 +2321,7 @@ describe('ReactHooksInspectionIntegration', () => {
     });
   });
 
+  // @gate !disableDefaultPropsExceptForClasses
   it('should support defaultProps and lazy', async () => {
     const Suspense = React.Suspense;
 
@@ -1818,10 +2345,12 @@ describe('ReactHooksInspectionIntegration', () => {
       </Suspense>,
     );
 
-    await expect(async () => {
-      await act(async () => await LazyFoo);
-    }).toErrorDev([
-      'Foo: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.',
+    await act(async () => await LazyFoo);
+    assertConsoleErrorDev([
+      'Foo: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.' +
+        (gate(flags => flags.enableOwnerStacks)
+          ? ''
+          : '\n    in Foo (at **)\n' + '   in Suspense (at **)'),
     ]);
 
     const childFiber = renderer.root._currentFiber();
@@ -1846,56 +2375,6 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support an injected dispatcher', () => {
-    function Foo(props) {
-      const [state] = React.useState('hello world');
-      return <div>{state}</div>;
-    }
-
-    const initial = {};
-    let current = initial;
-    let getterCalls = 0;
-    const setterCalls = [];
-    const FakeDispatcherRef = {
-      get current() {
-        getterCalls++;
-        return current;
-      },
-      set current(value) {
-        setterCalls.push(value);
-        current = value;
-      },
-    };
-
-    const renderer = ReactTestRenderer.create(<Foo />);
-    const childFiber = renderer.root._currentFiber();
-
-    let didCatch = false;
-
-    try {
-      ReactDebugTools.inspectHooksOfFiber(childFiber, FakeDispatcherRef);
-    } catch (error) {
-      expect(error.message).toBe('Error rendering inspected component');
-      expect(error.cause).toBeInstanceOf(Error);
-      expect(error.cause.message).toBe(
-        'Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for' +
-          ' one of the following reasons:\n' +
-          '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
-          '2. You might be breaking the Rules of Hooks\n' +
-          '3. You might have more than one copy of React in the same app\n' +
-          'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
-      );
-      didCatch = true;
-    }
-    // avoid false positive if no error was thrown at all
-    expect(didCatch).toBe(true);
-
-    expect(getterCalls).toBe(1);
-    expect(setterCalls).toHaveLength(2);
-    expect(setterCalls[0]).not.toBe(initial);
-    expect(setterCalls[1]).toBe(initial);
-  });
-
   // This test case is based on an open source bug report:
   // https://github.com/facebookincubator/redux-react-hook/issues/34#issuecomment-466693787
   it('should properly advance the current hook for useContext', async () => {
@@ -1912,7 +2391,12 @@ describe('ReactHooksInspectionIntegration', () => {
       return <div>count: {data.count}</div>;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     expect(renderer.toJSON()).toEqual({
       type: 'div',
       props: {},
@@ -1964,7 +2448,7 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support composite useSyncExternalStore hook', () => {
+  it('should support composite useSyncExternalStore hook', async () => {
     const useSyncExternalStore = React.useSyncExternalStore;
     function Foo() {
       const value = useSyncExternalStore(
@@ -1976,7 +2460,12 @@ describe('ReactHooksInspectionIntegration', () => {
       return value;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -2027,7 +2516,7 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  it('should support use(Context) hook', () => {
+  it('should support use(Context) hook', async () => {
     const Context = React.createContext('default');
     function Foo() {
       const value = React.use(Context);
@@ -2037,7 +2526,12 @@ describe('ReactHooksInspectionIntegration', () => {
       return value;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -2088,8 +2582,7 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  // @gate enableAsyncActions
-  it('should support useOptimistic hook', () => {
+  it('should support useOptimistic hook', async () => {
     const useOptimistic = React.useOptimistic;
     function Foo() {
       const [value] = useOptimistic('abc', currentState => currentState);
@@ -2098,7 +2591,12 @@ describe('ReactHooksInspectionIntegration', () => {
       return value;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -2149,10 +2647,9 @@ describe('ReactHooksInspectionIntegration', () => {
     `);
   });
 
-  // @gate enableFormActions && enableAsyncActions
-  it('should support useFormState hook', () => {
+  it('should support useActionState hook', async () => {
     function Foo() {
-      const [value] = ReactDOM.useFormState(function increment(n) {
+      const [value] = React.useActionState(function increment(n) {
         return n;
       }, 0);
       React.useMemo(() => 'memo', []);
@@ -2161,7 +2658,12 @@ describe('ReactHooksInspectionIntegration', () => {
       return value;
     }
 
-    const renderer = ReactTestRenderer.create(<Foo />);
+    let renderer;
+    await act(() => {
+      renderer = ReactTestRenderer.create(<Foo />, {
+        unstable_isConcurrent: true,
+      });
+    });
     const childFiber = renderer.root.findByType(Foo)._currentFiber();
     const tree = ReactDebugTools.inspectHooksOfFiber(childFiber);
     expect(normalizeSourceLoc(tree)).toMatchInlineSnapshot(`
@@ -2176,7 +2678,7 @@ describe('ReactHooksInspectionIntegration', () => {
           },
           "id": 0,
           "isStateEditable": false,
-          "name": "FormState",
+          "name": "ActionState",
           "subHooks": [],
           "value": 0,
         },

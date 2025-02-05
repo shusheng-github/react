@@ -94,12 +94,7 @@ Component.prototype.setState = function (partialState, callback) {
  * @final
  * @protected
  */
-<<<<<<< HEAD
-// 绑定forceUpdate （强致更新）
-Component.prototype.forceUpdate = function(callback) {
-=======
 Component.prototype.forceUpdate = function (callback) {
->>>>>>> 6c7efa27b46d9bdcb527bb491e9f50d2b1cb197b
   this.updater.enqueueForceUpdate(this, callback, 'forceUpdate');
 };
 

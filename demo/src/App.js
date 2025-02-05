@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import Init from './components/init';
 
 function App() {
-  const count = 200000; 
+  const count = 20; 
 	return (
 		<div className='App'>
 			<ul>

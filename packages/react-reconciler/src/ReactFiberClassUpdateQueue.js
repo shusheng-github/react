@@ -110,8 +110,6 @@ import {
 } from './ReactFiberFlags';
 import getComponentNameFromFiber from './getComponentNameFromFiber';
 
-import {debugRenderPhaseSideEffectsForStrictMode} from 'shared/ReactFeatureFlags';
-
 import {StrictLegacyMode} from './ReactTypeOfMode';
 import {
   markSkippedUpdateLanes,
@@ -402,10 +400,7 @@ function getStateFromUpdate<State>(
         }
         const nextState = payload.call(instance, prevState, nextProps);
         if (__DEV__) {
-          if (
-            debugRenderPhaseSideEffectsForStrictMode &&
-            workInProgress.mode & StrictLegacyMode
-          ) {
+          if (workInProgress.mode & StrictLegacyMode) {
             setIsStrictModeForDevtools(true);
             try {
               payload.call(instance, prevState, nextProps);
@@ -435,10 +430,7 @@ function getStateFromUpdate<State>(
         }
         partialState = payload.call(instance, prevState, nextProps);
         if (__DEV__) {
-          if (
-            debugRenderPhaseSideEffectsForStrictMode &&
-            workInProgress.mode & StrictLegacyMode
-          ) {
+          if (workInProgress.mode & StrictLegacyMode) {
             setIsStrictModeForDevtools(true);
             try {
               payload.call(instance, prevState, nextProps);
@@ -556,7 +548,7 @@ export function processUpdateQueue<State>(
     let newState = queue.baseState;
     // TODO: Don't need to accumulate this. Instead, we can remove renderLanes
     // from the original lanes.
-    let newLanes = NoLanes;
+    let newLanes: Lanes = NoLanes;
 
     let newBaseState = null;
     let newFirstBaseUpdate = null;
