@@ -19,6 +19,7 @@ let resolveText;
 let ReactNoop;
 let Scheduler;
 let Suspense;
+let Activity;
 let useState;
 let useReducer;
 let useEffect;
@@ -40,6 +41,8 @@ let waitFor;
 let waitForThrow;
 let waitForPaint;
 let assertLog;
+let useResourceEffect;
+let assertConsoleErrorDev;
 
 describe('ReactHooksWithNoopRenderer', () => {
   beforeEach(() => {
@@ -50,6 +53,8 @@ describe('ReactHooksWithNoopRenderer', () => {
     ReactNoop = require('react-noop-renderer');
     Scheduler = require('scheduler');
     act = require('internal-test-utils').act;
+    assertConsoleErrorDev =
+      require('internal-test-utils').assertConsoleErrorDev;
     useState = React.useState;
     useReducer = React.useReducer;
     useEffect = React.useEffect;
@@ -64,6 +69,8 @@ describe('ReactHooksWithNoopRenderer', () => {
     useTransition = React.useTransition;
     useDeferredValue = React.useDeferredValue;
     Suspense = React.Suspense;
+    Activity = React.unstable_Activity;
+    useResourceEffect = React.experimental_useResourceEffect;
     ContinuousEventPriority =
       require('react-reconciler/constants').ContinuousEventPriority;
     if (gate(flags => flags.enableSuspenseList)) {
@@ -215,7 +222,7 @@ describe('ReactHooksWithNoopRenderer', () => {
         '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
         '2. You might be breaking the Rules of Hooks\n' +
         '3. You might have more than one copy of React in the same app\n' +
-        'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
+        'See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.',
     );
 
     // Confirm that a subsequent hook works properly.
@@ -227,56 +234,19 @@ describe('ReactHooksWithNoopRenderer', () => {
     await waitForAll([10]);
   });
 
-  // @gate !disableModulePatternComponents
-  it('throws inside module-style components', async () => {
-    function Counter() {
-      return {
-        render() {
-          const [count] = useState(0);
-          return <Text text={this.props.label + ': ' + count} />;
-        },
-      };
-    }
-    ReactNoop.render(<Counter />);
-    await expect(
-      async () =>
-        await waitForThrow(
-          'Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen ' +
-            'for one of the following reasons:\n' +
-            '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
-            '2. You might be breaking the Rules of Hooks\n' +
-            '3. You might have more than one copy of React in the same app\n' +
-            'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
-        ),
-    ).toErrorDev(
-      'Warning: The <Counter /> component appears to be a function component that returns a class instance. ' +
-        'Change Counter to a class that extends React.Component instead. ' +
-        "If you can't use a class try assigning the prototype on the function as a workaround. " +
-        '`Counter.prototype = React.Component.prototype`. ' +
-        "Don't use an arrow function since it cannot be called with `new` by React.",
-    );
-
-    // Confirm that a subsequent hook works properly.
-    function GoodCounter(props) {
-      const [count] = useState(props.initialCount);
-      return <Text text={count} />;
-    }
-    ReactNoop.render(<GoodCounter initialCount={10} />);
-    await waitForAll([10]);
-  });
-
   it('throws when called outside the render phase', async () => {
-    expect(() => {
-      expect(() => useState(0)).toThrow(
-        "Cannot read property 'useState' of null",
-      );
-    }).toErrorDev(
-      'Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for' +
-        ' one of the following reasons:\n' +
-        '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
-        '2. You might be breaking the Rules of Hooks\n' +
-        '3. You might have more than one copy of React in the same app\n' +
-        'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
+    expect(() => useState(0)).toThrow(
+      "Cannot read property 'useState' of null",
+    );
+    assertConsoleErrorDev(
+      [
+        'Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for' +
+          ' one of the following reasons:\n' +
+          '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
+          '2. You might be breaking the Rules of Hooks\n' +
+          '3. You might have more than one copy of React in the same app\n' +
+          'See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.',
+      ],
       {withoutStack: true},
     );
   });
@@ -493,11 +463,12 @@ describe('ReactHooksWithNoopRenderer', () => {
           <Bar triggerUpdate={true} />
         </>,
       );
-      await expect(
-        async () => await waitForAll(['Foo [0]', 'Bar', 'Foo [1]']),
-      ).toErrorDev([
-        'Cannot update a component (`Foo`) while rendering a ' +
-          'different component (`Bar`). To locate the bad setState() call inside `Bar`',
+      await waitForAll(['Foo [0]', 'Bar', 'Foo [1]']);
+      assertConsoleErrorDev([
+        'Cannot update a component (`Foo`) while rendering a different component (`Bar`). ' +
+          'To locate the bad setState() call inside `Bar`, ' +
+          'follow the stack trace as described in https://react.dev/link/setstate-in-render\n' +
+          '    in Bar (at **)',
       ]);
 
       // It should not warn again (deduplication).
@@ -937,15 +908,8 @@ describe('ReactHooksWithNoopRenderer', () => {
       ReactNoop.flushSync(() => {
         counter.current.dispatch(INCREMENT);
       });
-      if (gate(flags => flags.enableUnifiedSyncLane)) {
-        assertLog(['Count: 4']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 4" />);
-      } else {
-        assertLog(['Count: 1']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
-        await waitForAll(['Count: 4']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 4" />);
-      }
+      assertLog(['Count: 4']);
+      expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 4" />);
     });
   });
 
@@ -1585,39 +1549,21 @@ describe('ReactHooksWithNoopRenderer', () => {
         expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: (empty)" />);
 
         // Rendering again should flush the previous commit's effects
-        if (gate(flags => flags.forceConcurrentByDefaultForTesting)) {
+        React.startTransition(() => {
           ReactNoop.render(<Counter count={1} />, () =>
             Scheduler.log('Sync effect'),
           );
-        } else {
-          React.startTransition(() => {
-            ReactNoop.render(<Counter count={1} />, () =>
-              Scheduler.log('Sync effect'),
-            );
-          });
-        }
+        });
 
         await waitFor(['Schedule update [0]', 'Count: 0']);
 
-        if (gate(flags => flags.forceConcurrentByDefaultForTesting)) {
-          expect(ReactNoop).toMatchRenderedOutput(
-            <span prop="Count: (empty)" />,
-          );
-          await waitFor(['Sync effect']);
-          expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
-
-          ReactNoop.flushPassiveEffects();
-          assertLog(['Schedule update [1]']);
-          await waitForAll(['Count: 1']);
-        } else {
-          expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
-          await waitFor([
-            'Count: 0',
-            'Sync effect',
-            'Schedule update [1]',
-            'Count: 1',
-          ]);
-        }
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
+        await waitFor([
+          'Count: 0',
+          'Sync effect',
+          'Schedule update [1]',
+          'Count: 1',
+        ]);
 
         expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
       });
@@ -1651,15 +1597,12 @@ describe('ReactHooksWithNoopRenderer', () => {
       // As a result we, somewhat surprisingly, commit them in the opposite order.
       // This should be fine because any non-discrete set of work doesn't guarantee order
       // and easily could've happened slightly later too.
-      if (gate(flags => flags.enableUnifiedSyncLane)) {
-        assertLog(['Will set count to 1', 'Count: 1']);
-      } else {
-        assertLog(['Will set count to 1', 'Count: 2', 'Count: 1']);
-      }
+      assertLog(['Will set count to 1', 'Count: 1']);
 
       expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
     });
 
+    // @gate !disableLegacyMode
     it(
       'in legacy mode, useEffect is deferred and updates finish synchronously ' +
         '(in a single batch)',
@@ -1707,6 +1650,12 @@ describe('ReactHooksWithNoopRenderer', () => {
             updateCount(props.count);
           });
           assertLog([`Schedule update [${props.count}]`]);
+          assertConsoleErrorDev([
+            'flushSync was called from inside a lifecycle method. ' +
+              'React cannot flush when React is already rendering. ' +
+              'Consider moving this call to a scheduler task or micro task.\n' +
+              '    in Counter (at **)',
+          ]);
           // This shouldn't flush synchronously.
           expect(ReactNoop).not.toMatchRenderedOutput(
             <span prop={`Count: ${props.count}`} />,
@@ -1714,17 +1663,14 @@ describe('ReactHooksWithNoopRenderer', () => {
         }, [props.count]);
         return <Text text={'Count: ' + count} />;
       }
-      await expect(async () => {
-        await act(async () => {
-          ReactNoop.render(<Counter count={0} />, () =>
-            Scheduler.log('Sync effect'),
-          );
-          await waitFor(['Count: (empty)', 'Sync effect']);
-          expect(ReactNoop).toMatchRenderedOutput(
-            <span prop="Count: (empty)" />,
-          );
-        });
-      }).toErrorDev('flushSync was called from inside a lifecycle method');
+      await act(async () => {
+        ReactNoop.render(<Counter count={0} />, () =>
+          Scheduler.log('Sync effect'),
+        );
+        await waitFor(['Count: (empty)', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: (empty)" />);
+      });
+
       assertLog([`Count: 0`]);
       expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
     });
@@ -2077,14 +2023,15 @@ describe('ReactHooksWithNoopRenderer', () => {
         });
         return <Text text={'Count: ' + props.count} />;
       }
-      await act(async () => {
-        ReactNoop.render(<Counter count={0} />, () =>
-          Scheduler.log('Sync effect'),
-        );
-        await waitFor(['Count: 0', 'Sync effect']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
-        expect(() => ReactNoop.flushPassiveEffects()).toThrow('Oops');
-      });
+      await expect(async () => {
+        await act(async () => {
+          ReactNoop.render(<Counter count={0} />, () =>
+            Scheduler.log('Sync effect'),
+          );
+          await waitFor(['Count: 0', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 0" />);
+        });
+      }).rejects.toThrow('Oops');
 
       assertLog([
         'Mount A [0]',
@@ -2107,7 +2054,7 @@ describe('ReactHooksWithNoopRenderer', () => {
         useEffect(() => {
           if (props.count === 1) {
             Scheduler.log('Oops!');
-            throw new Error('Oops!');
+            throw new Error('Oops error!');
           }
           Scheduler.log(`Mount B [${props.count}]`);
           return () => {
@@ -2126,22 +2073,27 @@ describe('ReactHooksWithNoopRenderer', () => {
         assertLog(['Mount A [0]', 'Mount B [0]']);
       });
 
-      await act(async () => {
-        // This update will trigger an error
-        ReactNoop.render(<Counter count={1} />, () =>
-          Scheduler.log('Sync effect'),
-        );
-        await waitFor(['Count: 1', 'Sync effect']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
-        expect(() => ReactNoop.flushPassiveEffects()).toThrow('Oops');
-        assertLog(['Unmount A [0]', 'Unmount B [0]', 'Mount A [1]', 'Oops!']);
-        expect(ReactNoop).toMatchRenderedOutput(null);
-      });
-      assertLog([
-        // Clean up effect A runs passively on unmount.
-        // There's no effect B to clean-up, because it never mounted.
-        'Unmount A [1]',
-      ]);
+      await expect(async () => {
+        await act(async () => {
+          // This update will trigger an error
+          ReactNoop.render(<Counter count={1} />, () =>
+            Scheduler.log('Sync effect'),
+          );
+          await waitFor(['Count: 1', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
+          ReactNoop.flushPassiveEffects();
+          assertLog([
+            'Unmount A [0]',
+            'Unmount B [0]',
+            'Mount A [1]',
+            'Oops!',
+            // Clean up effect A runs passively on unmount.
+            // There's no effect B to clean-up, because it never mounted.
+            'Unmount A [1]',
+          ]);
+          expect(ReactNoop).toMatchRenderedOutput(null);
+        });
+      }).rejects.toThrow('Oops error!');
     });
 
     it('handles errors in destroy on update', async () => {
@@ -2151,7 +2103,7 @@ describe('ReactHooksWithNoopRenderer', () => {
           return () => {
             Scheduler.log('Oops!');
             if (props.count === 0) {
-              throw new Error('Oops!');
+              throw new Error('Oops error!');
             }
           };
         });
@@ -2174,26 +2126,34 @@ describe('ReactHooksWithNoopRenderer', () => {
         assertLog(['Mount A [0]', 'Mount B [0]']);
       });
 
-      await act(async () => {
-        // This update will trigger an error during passive effect unmount
-        ReactNoop.render(<Counter count={1} />, () =>
-          Scheduler.log('Sync effect'),
-        );
-        await waitFor(['Count: 1', 'Sync effect']);
-        expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
-        expect(() => ReactNoop.flushPassiveEffects()).toThrow('Oops');
+      await expect(async () => {
+        await act(async () => {
+          // This update will trigger an error during passive effect unmount
+          ReactNoop.render(<Counter count={1} />, () =>
+            Scheduler.log('Sync effect'),
+          );
+          await waitFor(['Count: 1', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Count: 1" />);
+          ReactNoop.flushPassiveEffects();
 
-        // This branch enables a feature flag that flushes all passive destroys in a
-        // separate pass before flushing any passive creates.
-        // A result of this two-pass flush is that an error thrown from unmount does
-        // not block the subsequent create functions from being run.
-        assertLog(['Oops!', 'Unmount B [0]', 'Mount A [1]', 'Mount B [1]']);
-      });
+          // This branch enables a feature flag that flushes all passive destroys in a
+          // separate pass before flushing any passive creates.
+          // A result of this two-pass flush is that an error thrown from unmount does
+          // not block the subsequent create functions from being run.
+          assertLog([
+            'Oops!',
+            'Unmount B [0]',
+            'Mount A [1]',
+            'Mount B [1]',
+            // <Counter> gets unmounted because an error is thrown above.
+            // The remaining destroy functions are run later on unmount, since they're passive.
+            // In this case, one of them throws again (because of how the test is written).
+            'Oops!',
+            'Unmount B [1]',
+          ]);
+        });
+      }).rejects.toThrow('Oops error!');
 
-      // <Counter> gets unmounted because an error is thrown above.
-      // The remaining destroy functions are run later on unmount, since they're passive.
-      // In this case, one of them throws again (because of how the test is written).
-      assertLog(['Oops!', 'Unmount B [1]']);
       expect(ReactNoop).toMatchRenderedOutput(null);
     });
 
@@ -2554,35 +2514,47 @@ describe('ReactHooksWithNoopRenderer', () => {
       }
 
       const root1 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root1.render(<App return={17} />);
-        });
-      }).toErrorDev([
-        'Warning: useEffect must not return anything besides a ' +
-          'function, which is used for clean-up. You returned: 17',
+      await act(() => {
+        root1.render(<App return={17} />);
+      });
+      assertConsoleErrorDev([
+        'useEffect must not return anything besides a function, ' +
+          'which is used for clean-up. You returned: 17\n' +
+          '    in App (at **)',
       ]);
 
       const root2 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root2.render(<App return={null} />);
-        });
-      }).toErrorDev([
-        'Warning: useEffect must not return anything besides a ' +
-          'function, which is used for clean-up. You returned null. If your ' +
-          'effect does not require clean up, return undefined (or nothing).',
+      await act(() => {
+        root2.render(<App return={null} />);
+      });
+      assertConsoleErrorDev([
+        'useEffect must not return anything besides a function, ' +
+          'which is used for clean-up. You returned null. ' +
+          'If your effect does not require clean up, return undefined (or nothing).\n' +
+          '    in App (at **)',
       ]);
 
       const root3 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root3.render(<App return={Promise.resolve()} />);
-        });
-      }).toErrorDev([
-        'Warning: useEffect must not return anything besides a ' +
-          'function, which is used for clean-up.\n\n' +
-          'It looks like you wrote useEffect(async () => ...) or returned a Promise.',
+      await act(() => {
+        root3.render(<App return={Promise.resolve()} />);
+      });
+      assertConsoleErrorDev([
+        'useEffect must not return anything besides a function, which is used for clean-up.\n' +
+          '\n' +
+          'It looks like you wrote useEffect(async () => ...) or returned a Promise. ' +
+          'Instead, write the async function inside your effect and call it immediately:\n' +
+          '\n' +
+          'useEffect(() => {\n' +
+          '  async function fetchData() {\n' +
+          '    // You can await here\n' +
+          '    const response = await MyAPI.getData(someId);\n' +
+          '    // ...\n' +
+          '  }\n' +
+          '  fetchData();\n' +
+          "}, [someId]); // Or [] if effect doesn't need props or state\n" +
+          '\n' +
+          'Learn more about data fetching with Hooks: https://react.dev/link/hooks-data-fetching\n' +
+          '    in App (at **)',
       ]);
 
       // Error on unmount because React assumes the value is a function
@@ -2743,13 +2715,23 @@ describe('ReactHooksWithNoopRenderer', () => {
         React.startTransition(() => {
           ReactNoop.render(<Counter count={1} />);
         });
-        await waitForPaint([
-          'Create passive [current: 0]',
-          'Destroy insertion [current: 0]',
-          'Create insertion [current: 0]',
-          'Destroy layout [current: 1]',
-          'Create layout [current: 1]',
-        ]);
+        if (gate(flags => flags.enableYieldingBeforePassive)) {
+          await waitForPaint(['Create passive [current: 0]']);
+          await waitForPaint([
+            'Destroy insertion [current: 0]',
+            'Create insertion [current: 0]',
+            'Destroy layout [current: 1]',
+            'Create layout [current: 1]',
+          ]);
+        } else {
+          await waitForPaint([
+            'Create passive [current: 0]',
+            'Destroy insertion [current: 0]',
+            'Create insertion [current: 0]',
+            'Destroy layout [current: 1]',
+            'Create layout [current: 1]',
+          ]);
+        }
         expect(committedText).toEqual('1');
       });
       assertLog([
@@ -2933,35 +2915,48 @@ describe('ReactHooksWithNoopRenderer', () => {
       }
 
       const root1 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root1.render(<App return={17} />);
-        });
-      }).toErrorDev([
-        'Warning: useInsertionEffect must not return anything besides a ' +
-          'function, which is used for clean-up. You returned: 17',
+      await act(() => {
+        root1.render(<App return={17} />);
+      });
+      assertConsoleErrorDev([
+        'useInsertionEffect must not return anything besides a function, ' +
+          'which is used for clean-up. You returned: 17\n' +
+          '    in App (at **)',
       ]);
 
       const root2 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root2.render(<App return={null} />);
-        });
-      }).toErrorDev([
-        'Warning: useInsertionEffect must not return anything besides a ' +
-          'function, which is used for clean-up. You returned null. If your ' +
-          'effect does not require clean up, return undefined (or nothing).',
+      await act(() => {
+        root2.render(<App return={null} />);
+      });
+      assertConsoleErrorDev([
+        'useInsertionEffect must not return anything besides a function, ' +
+          'which is used for clean-up. You returned null. ' +
+          'If your effect does not require clean up, return undefined (or nothing).\n' +
+          '    in App (at **)',
       ]);
 
       const root3 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root3.render(<App return={Promise.resolve()} />);
-        });
-      }).toErrorDev([
-        'Warning: useInsertionEffect must not return anything besides a ' +
-          'function, which is used for clean-up.\n\n' +
-          'It looks like you wrote useInsertionEffect(async () => ...) or returned a Promise.',
+      await act(() => {
+        root3.render(<App return={Promise.resolve()} />);
+      });
+      assertConsoleErrorDev([
+        'useInsertionEffect must not return anything besides a ' +
+          'function, which is used for clean-up.\n' +
+          '\n' +
+          'It looks like you wrote useInsertionEffect(async () => ...) or returned a Promise. ' +
+          'Instead, write the async function inside your effect and call it immediately:\n' +
+          '\n' +
+          'useInsertionEffect(() => {\n' +
+          '  async function fetchData() {\n' +
+          '    // You can await here\n' +
+          '    const response = await MyAPI.getData(someId);\n' +
+          '    // ...\n' +
+          '  }\n' +
+          '  fetchData();\n' +
+          "}, [someId]); // Or [] if effect doesn't need props or state\n" +
+          '\n' +
+          'Learn more about data fetching with Hooks: https://react.dev/link/hooks-data-fetching\n' +
+          '    in App (at **)',
       ]);
 
       // Error on unmount because React assumes the value is a function
@@ -2984,11 +2979,13 @@ describe('ReactHooksWithNoopRenderer', () => {
       }
 
       const root = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root.render(<App />);
-        });
-      }).toErrorDev(['Warning: useInsertionEffect must not schedule updates.']);
+      await act(() => {
+        root.render(<App />);
+      });
+      assertConsoleErrorDev([
+        'useInsertionEffect must not schedule updates.\n' +
+          '    in App (at **)',
+      ]);
 
       await act(async () => {
         root.render(<App throw={true} />);
@@ -3026,16 +3023,67 @@ describe('ReactHooksWithNoopRenderer', () => {
       await act(() => {
         root.render(<App foo="hello" />);
       });
-      await expect(async () => {
-        await act(() => {
-          root.render(<App foo="goodbye" />);
-        });
-      }).toErrorDev(['Warning: useInsertionEffect must not schedule updates.']);
+      await act(() => {
+        root.render(<App foo="goodbye" />);
+      });
+      assertConsoleErrorDev([
+        'useInsertionEffect must not schedule updates.\n' +
+          '    in App (at **)',
+      ]);
 
       await act(async () => {
         root.render(<App throw={true} />);
         await waitForThrow('No');
       });
+
+      // Should not warn for regular effects after throw.
+      function NotInsertion() {
+        const [, setX] = useState(0);
+        useEffect(() => {
+          setX(1);
+        }, []);
+        return null;
+      }
+      await act(() => {
+        root.render(<NotInsertion />);
+      });
+    });
+
+    // @gate enableActivity
+    it('warns when setState is called from offscreen deleted insertion effect cleanup', async () => {
+      function App(props) {
+        const [, setX] = useState(0);
+        useInsertionEffect(() => {
+          if (props.throw) {
+            throw Error('No');
+          }
+          return () => {
+            setX(1);
+          };
+        }, [props.throw, props.foo]);
+        return null;
+      }
+
+      const root = ReactNoop.createRoot();
+      await act(() => {
+        root.render(
+          <Activity mode="hidden">
+            <App foo="hello" />
+          </Activity>,
+        );
+      });
+
+      await act(() => {
+        root.render(<Activity mode="hidden" />);
+      });
+      assertConsoleErrorDev(
+        gate('enableHiddenSubtreeInsertionEffectCleanup')
+          ? [
+              'useInsertionEffect must not schedule updates.\n' +
+                '    in App (at **)',
+            ]
+          : [],
+      );
 
       // Should not warn for regular effects after throw.
       function NotInsertion() {
@@ -3212,35 +3260,47 @@ describe('ReactHooksWithNoopRenderer', () => {
       }
 
       const root1 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root1.render(<App return={17} />);
-        });
-      }).toErrorDev([
-        'Warning: useLayoutEffect must not return anything besides a ' +
-          'function, which is used for clean-up. You returned: 17',
+      await act(() => {
+        root1.render(<App return={17} />);
+      });
+      assertConsoleErrorDev([
+        'useLayoutEffect must not return anything besides a ' +
+          'function, which is used for clean-up. You returned: 17\n' +
+          '    in App (at **)',
       ]);
 
       const root2 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root2.render(<App return={null} />);
-        });
-      }).toErrorDev([
-        'Warning: useLayoutEffect must not return anything besides a ' +
+      await act(() => {
+        root2.render(<App return={null} />);
+      });
+      assertConsoleErrorDev([
+        'useLayoutEffect must not return anything besides a ' +
           'function, which is used for clean-up. You returned null. If your ' +
-          'effect does not require clean up, return undefined (or nothing).',
+          'effect does not require clean up, return undefined (or nothing).\n' +
+          '    in App (at **)',
       ]);
 
       const root3 = ReactNoop.createRoot();
-      await expect(async () => {
-        await act(() => {
-          root3.render(<App return={Promise.resolve()} />);
-        });
-      }).toErrorDev([
-        'Warning: useLayoutEffect must not return anything besides a ' +
+      await act(() => {
+        root3.render(<App return={Promise.resolve()} />);
+      });
+      assertConsoleErrorDev([
+        'useLayoutEffect must not return anything besides a ' +
           'function, which is used for clean-up.\n\n' +
-          'It looks like you wrote useLayoutEffect(async () => ...) or returned a Promise.',
+          'It looks like you wrote useLayoutEffect(async () => ...) or returned a Promise. ' +
+          'Instead, write the async function inside your effect and call it immediately:\n' +
+          '\n' +
+          'useLayoutEffect(() => {\n' +
+          '  async function fetchData() {\n' +
+          '    // You can await here\n' +
+          '    const response = await MyAPI.getData(someId);\n' +
+          '    // ...\n' +
+          '  }\n' +
+          '  fetchData();\n' +
+          "}, [someId]); // Or [] if effect doesn't need props or state\n" +
+          '\n' +
+          'Learn more about data fetching with Hooks: https://react.dev/link/hooks-data-fetching\n' +
+          '    in App (at **)',
       ]);
 
       // Error on unmount because React assumes the value is a function
@@ -3248,6 +3308,760 @@ describe('ReactHooksWithNoopRenderer', () => {
         root3.render(null);
         await waitForThrow('is not a function');
       });
+    });
+  });
+
+  // @gate enableUseResourceEffectHook
+  describe('useResourceEffect', () => {
+    class Resource {
+      isDeleted: false;
+      id: string;
+      opts: mixed;
+      constructor(id, opts) {
+        this.id = id;
+        this.opts = opts;
+      }
+      update(opts) {
+        if (this.isDeleted) {
+          console.error('Cannot update deleted resource');
+          return;
+        }
+        this.opts = opts;
+      }
+      destroy() {
+        this.isDeleted = true;
+      }
+    }
+
+    // @gate !enableUseResourceEffectHook
+    it('is null when flag is disabled', async () => {
+      expect(useResourceEffect).toBeUndefined();
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('validates create return value', async () => {
+      function App({id}) {
+        useResourceEffect(() => {
+          Scheduler.log(`create(${id})`);
+        }, [id]);
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} />);
+      });
+      assertConsoleErrorDev(
+        [
+          'useResourceEffect must provide a callback which returns a resource. ' +
+            'If a managed resource is not needed here, use useEffect. Received undefined',
+        ],
+        {withoutStack: true},
+      );
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('validates non-empty update deps', async () => {
+      function App({id}) {
+        useResourceEffect(
+          () => {
+            Scheduler.log(`create(${id})`);
+            return {};
+          },
+          [id],
+          () => {
+            Scheduler.log('update');
+          },
+          [],
+        );
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} />);
+      });
+      assertConsoleErrorDev([
+        'useResourceEffect received a dependency array with no dependencies. ' +
+          'When specified, the dependency array must have at least one dependency.\n' +
+          '    in App (at **)',
+      ]);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('simple mount and update', async () => {
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jack" />);
+      });
+      assertLog(['create(1, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Lauren" />);
+      });
+      assertLog(['update(1, Lauren)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Lauren" />);
+      });
+      assertLog([]);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jordan" />);
+      });
+      assertLog(['update(1, Jordan)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={2} username="Jack" />);
+      });
+      assertLog(['destroy(1, Jordan)', 'create(2, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(null);
+      });
+      assertLog(['destroy(2, Jack)']);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('simple mount with no update', async () => {
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jack" />);
+      });
+      assertLog(['create(1, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(null);
+      });
+      assertLog(['destroy(1, Jack)']);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('calls update on every render if no deps are specified', async () => {
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jack" />);
+      });
+      assertLog(['create(1, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jack" />);
+      });
+      assertLog(['update(1, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={2} username="Jack" />);
+      });
+      assertLog(['create(2, Jack)', 'update(2, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={2} username="Lauren" />);
+      });
+
+      assertLog(['update(2, Lauren)']);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('does not unmount previous useResourceEffect between updates', async () => {
+      function App({id}) {
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id);
+            Scheduler.log(`create(${resource.id})`);
+            return resource;
+          },
+          [],
+          resource => {
+            Scheduler.log(`update(${resource.id})`);
+          },
+          undefined,
+          resource => {
+            Scheduler.log(`destroy(${resource.id})`);
+            resource.destroy();
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+
+      await act(async () => {
+        ReactNoop.render(<App id={0} />, () => Scheduler.log('Sync effect'));
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+      });
+
+      assertLog(['create(0)']);
+
+      await act(async () => {
+        ReactNoop.render(<App id={1} />, () => Scheduler.log('Sync effect'));
+        await waitFor(['Id: 1', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 1" />);
+      });
+
+      assertLog(['update(0)']);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('unmounts only on deletion', async () => {
+      function App({id}) {
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id);
+            Scheduler.log(`create(${resource.id})`);
+            return resource;
+          },
+          undefined,
+          resource => {
+            Scheduler.log(`update(${resource.id})`);
+          },
+          undefined,
+          resource => {
+            Scheduler.log(`destroy(${resource.id})`);
+            resource.destroy();
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+      await act(async () => {
+        ReactNoop.render(<App id={0} />, () => Scheduler.log('Sync effect'));
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+      });
+
+      assertLog(['create(0)']);
+
+      ReactNoop.render(null);
+      await waitForAll(['destroy(0)']);
+      expect(ReactNoop).toMatchRenderedOutput(null);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('unmounts on deletion', async () => {
+      function Wrapper(props) {
+        return <App {...props} />;
+      }
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+
+      await act(async () => {
+        ReactNoop.render(<Wrapper id={0} username="Sathya" />, () =>
+          Scheduler.log('Sync effect'),
+        );
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+      });
+
+      assertLog(['create(0, Sathya)']);
+
+      await act(async () => {
+        ReactNoop.render(<Wrapper id={0} username="Lauren" />, () =>
+          Scheduler.log('Sync effect'),
+        );
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+      });
+
+      assertLog(['update(0, Lauren)']);
+
+      ReactNoop.render(null);
+      await waitForAll(['destroy(0, Lauren)']);
+      expect(ReactNoop).toMatchRenderedOutput(null);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('handles errors in create on mount', async () => {
+      function App({id}) {
+        useResourceEffect(
+          () => {
+            Scheduler.log(`Mount A [${id}]`);
+            return {};
+          },
+          undefined,
+          undefined,
+          undefined,
+          resource => {
+            Scheduler.log(`Unmount A [${id}]`);
+          },
+        );
+        useResourceEffect(
+          () => {
+            Scheduler.log('Oops!');
+            throw new Error('Oops!');
+            // eslint-disable-next-line no-unreachable
+            Scheduler.log(`Mount B [${id}]`);
+            return {};
+          },
+          undefined,
+          undefined,
+          undefined,
+          resource => {
+            Scheduler.log(`Unmount B [${id}]`);
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+      await expect(async () => {
+        await act(async () => {
+          ReactNoop.render(<App id={0} />, () => Scheduler.log('Sync effect'));
+          await waitFor(['Id: 0', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+        });
+      }).rejects.toThrow('Oops');
+
+      assertLog([
+        'Mount A [0]',
+        'Oops!',
+        // Clean up effect A. There's no effect B to clean-up, because it
+        // never mounted.
+        'Unmount A [0]',
+      ]);
+      expect(ReactNoop).toMatchRenderedOutput(null);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('handles errors in create on update', async () => {
+      function App({id}) {
+        useResourceEffect(
+          () => {
+            Scheduler.log(`Mount A [${id}]`);
+            return {};
+          },
+          [],
+          () => {
+            if (id === 1) {
+              Scheduler.log('Oops!');
+              throw new Error('Oops error!');
+            }
+            Scheduler.log(`Update A [${id}]`);
+          },
+          [id],
+          () => {
+            Scheduler.log(`Unmount A [${id}]`);
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+      await act(async () => {
+        ReactNoop.render(<App id={0} />, () => Scheduler.log('Sync effect'));
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+        ReactNoop.flushPassiveEffects();
+        assertLog(['Mount A [0]']);
+      });
+
+      await expect(async () => {
+        await act(async () => {
+          // This update will trigger an error
+          ReactNoop.render(<App id={1} />, () => Scheduler.log('Sync effect'));
+          await waitFor(['Id: 1', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 1" />);
+          ReactNoop.flushPassiveEffects();
+          assertLog(['Oops!', 'Unmount A [1]']);
+          expect(ReactNoop).toMatchRenderedOutput(null);
+        });
+      }).rejects.toThrow('Oops error!');
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('handles errors in destroy on update', async () => {
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`Mount A [${id}, ${resource.opts.username}]`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`Update A [${id}, ${resource.opts.username}]`);
+          },
+          [opts],
+          resource => {
+            Scheduler.log(`Oops, ${resource.opts.username}!`);
+            if (id === 1) {
+              throw new Error(`Oops ${resource.opts.username} error!`);
+            }
+            Scheduler.log(`Unmount A [${id}, ${resource.opts.username}]`);
+          },
+        );
+        return <Text text={'Id: ' + id} />;
+      }
+      await act(async () => {
+        ReactNoop.render(<App id={0} username="Lauren" />, () =>
+          Scheduler.log('Sync effect'),
+        );
+        await waitFor(['Id: 0', 'Sync effect']);
+        expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 0" />);
+        ReactNoop.flushPassiveEffects();
+        assertLog(['Mount A [0, Lauren]']);
+      });
+
+      await expect(async () => {
+        await act(async () => {
+          // This update will trigger an error during passive effect unmount
+          ReactNoop.render(<App id={1} username="Sathya" />, () =>
+            Scheduler.log('Sync effect'),
+          );
+          await waitFor(['Id: 1', 'Sync effect']);
+          expect(ReactNoop).toMatchRenderedOutput(<span prop="Id: 1" />);
+          ReactNoop.flushPassiveEffects();
+          assertLog(['Oops, Lauren!', 'Mount A [1, Sathya]', 'Oops, Sathya!']);
+        });
+        // TODO(lauren) more explicit assertions. this is weird because we
+        // destroy both the first and second resource
+      }).rejects.toThrow();
+
+      expect(ReactNoop).toMatchRenderedOutput(null);
+    });
+
+    // @gate enableUseResourceEffectHook && enableActivity
+    it('composes with activity', async () => {
+      function App({id, username}) {
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return null;
+      }
+
+      const root = ReactNoop.createRoot();
+      await act(() => {
+        root.render(
+          <Activity mode="hidden">
+            <App id={0} username="Rick" />
+          </Activity>,
+        );
+      });
+      assertLog([]);
+
+      await act(() => {
+        root.render(
+          <Activity mode="hidden">
+            <App id={0} username="Lauren" />
+          </Activity>,
+        );
+      });
+      assertLog([]);
+
+      await act(() => {
+        root.render(
+          <Activity mode="visible">
+            <App id={0} username="Rick" />
+          </Activity>,
+        );
+      });
+      assertLog(['create(0, Rick)']);
+
+      await act(() => {
+        root.render(
+          <Activity mode="visible">
+            <App id={0} username="Lauren" />
+          </Activity>,
+        );
+      });
+      assertLog(['update(0, Lauren)']);
+
+      await act(() => {
+        root.render(
+          <Activity mode="hidden">
+            <App id={0} username="Lauren" />
+          </Activity>,
+        );
+      });
+      assertLog(['destroy(0, Lauren)']);
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('composes with suspense', async () => {
+      function TextBox({text}) {
+        return <AsyncText text={text} ms={0} />;
+      }
+      let setUsername_;
+      function App({id}) {
+        const [username, setUsername] = useState('Mofei');
+        setUsername_ = setUsername;
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return (
+          <>
+            <Text text={'Sync: ' + username} />
+            <Suspense fallback={<Text text={'Loading'} />}>
+              <TextBox text={username} />
+            </Suspense>
+          </>
+        );
+      }
+
+      await act(async () => {
+        ReactNoop.render(<App id={0} />);
+        await waitFor([
+          'Sync: Mofei',
+          'Suspend! [Mofei]',
+          'Loading',
+          'create(0, Mofei)',
+        ]);
+        expect(ReactNoop).toMatchRenderedOutput(
+          <>
+            <span prop="Sync: Mofei" />
+            <span prop="Loading" />
+          </>,
+        );
+        ReactNoop.flushPassiveEffects();
+        assertLog([]);
+
+        Scheduler.unstable_advanceTime(10);
+        await advanceTimers(10);
+        assertLog(['Promise resolved [Mofei]']);
+      });
+      assertLog(['Mofei']);
+      expect(ReactNoop).toMatchRenderedOutput(
+        <>
+          <span prop="Sync: Mofei" />
+          <span prop="Mofei" />
+        </>,
+      );
+
+      await act(async () => {
+        ReactNoop.render(<App id={1} />, () => Scheduler.log('Sync effect'));
+        await waitFor([
+          'Sync: Mofei',
+          'Mofei',
+          'Sync effect',
+          'destroy(0, Mofei)',
+          'create(1, Mofei)',
+        ]);
+        expect(ReactNoop).toMatchRenderedOutput(
+          <>
+            <span prop="Sync: Mofei" />
+            <span prop="Mofei" />
+          </>,
+        );
+        ReactNoop.flushPassiveEffects();
+        assertLog([]);
+      });
+
+      await act(async () => {
+        setUsername_('Lauren');
+        await waitFor([
+          'Sync: Lauren',
+          'Suspend! [Lauren]',
+          'Loading',
+          'update(1, Lauren)',
+        ]);
+        expect(ReactNoop).toMatchRenderedOutput(
+          <>
+            <span prop="Sync: Lauren" />
+            <span hidden={true} prop="Mofei" />
+            <span prop="Loading" />
+          </>,
+        );
+        ReactNoop.flushPassiveEffects();
+        assertLog([]);
+
+        Scheduler.unstable_advanceTime(10);
+        await advanceTimers(10);
+        assertLog(['Promise resolved [Lauren]']);
+      });
+      assertLog(['Lauren']);
+      expect(ReactNoop).toMatchRenderedOutput(
+        <>
+          <span prop="Sync: Lauren" />
+          <span prop="Lauren" />
+        </>,
+      );
+    });
+
+    // @gate enableUseResourceEffectHook
+    it('composes with other kinds of effects', async () => {
+      let rerender;
+      function App({id, username}) {
+        const [count, rerender_] = useState(0);
+        rerender = rerender_;
+        const opts = useMemo(() => {
+          return {username};
+        }, [username]);
+        useEffect(() => {
+          Scheduler.log(`useEffect(${count})`);
+        }, [count]);
+        useResourceEffect(
+          () => {
+            const resource = new Resource(id, opts);
+            Scheduler.log(`create(${resource.id}, ${resource.opts.username})`);
+            return resource;
+          },
+          [id],
+          resource => {
+            resource.update(opts);
+            Scheduler.log(`update(${resource.id}, ${resource.opts.username})`);
+          },
+          [opts],
+          resource => {
+            resource.destroy();
+            Scheduler.log(`destroy(${resource.id}, ${resource.opts.username})`);
+          },
+        );
+        return null;
+      }
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jack" />);
+      });
+      assertLog(['useEffect(0)', 'create(1, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Lauren" />);
+      });
+      assertLog(['update(1, Lauren)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Lauren" />);
+      });
+      assertLog([]);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Jordan" />);
+      });
+      assertLog(['update(1, Jordan)']);
+
+      await act(() => {
+        rerender(n => n + 1);
+      });
+      assertLog(['useEffect(1)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={1} username="Mofei" />);
+      });
+      assertLog(['update(1, Mofei)']);
+
+      await act(() => {
+        ReactNoop.render(<App id={2} username="Jack" />);
+      });
+      assertLog(['destroy(1, Mofei)', 'create(2, Jack)']);
+
+      await act(() => {
+        ReactNoop.render(null);
+      });
+      assertLog(['destroy(2, Jack)']);
     });
   });
 
@@ -3480,14 +4294,10 @@ describe('ReactHooksWithNoopRenderer', () => {
       let totalRefUpdates = 0;
       function Counter(props, ref) {
         const [count, dispatch] = useReducer(reducer, 0);
-        useImperativeHandle(
-          ref,
-          () => {
-            totalRefUpdates++;
-            return {count, dispatch};
-          },
-          [count],
-        );
+        useImperativeHandle(ref, () => {
+          totalRefUpdates++;
+          return {count, dispatch};
+        }, [count]);
         return <Text text={'Count: ' + count} />;
       }
 
@@ -3600,7 +4410,13 @@ describe('ReactHooksWithNoopRenderer', () => {
         ReactNoop.render(<App />);
       });
 
-      assertLog(['A', 'Suspend! [A]', 'Loading']);
+      assertLog([
+        'A',
+        'Suspend! [A]',
+        'Loading',
+
+        ...(gate('enableSiblingPrerendering') ? ['Suspend! [A]'] : []),
+      ]);
       expect(ReactNoop).toMatchRenderedOutput(
         <>
           <span prop="A" />
@@ -3704,21 +4520,23 @@ describe('ReactHooksWithNoopRenderer', () => {
       );
 
       ReactNoop.render(<App loadC={true} />);
-      await expect(async () => {
-        await waitForThrow(
-          'Rendered more hooks than during the previous render.',
-        );
-        assertLog([]);
-      }).toErrorDev([
-        'Warning: React has detected a change in the order of Hooks called by App. ' +
+      await waitForThrow(
+        'Rendered more hooks than during the previous render.',
+      );
+      assertLog([]);
+      assertConsoleErrorDev([
+        'React has detected a change in the order of Hooks called by App. ' +
           'This will lead to bugs and errors if not fixed. For more information, ' +
-          'read the Rules of Hooks: https://reactjs.org/link/rules-of-hooks\n\n' +
+          'read the Rules of Hooks: https://react.dev/link/rules-of-hooks\n' +
+          '\n' +
           '   Previous render            Next render\n' +
           '   ------------------------------------------------------\n' +
           '1. useState                   useState\n' +
           '2. useState                   useState\n' +
           '3. undefined                  useState\n' +
-          '   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n',
+          '   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n' +
+          '\n' +
+          '    in App (at **)',
       ]);
 
       // Uncomment if/when we support this again
@@ -3801,20 +4619,22 @@ describe('ReactHooksWithNoopRenderer', () => {
 
       await act(async () => {
         ReactNoop.render(<App showMore={true} />);
-        await expect(async () => {
-          await waitForThrow(
-            'Rendered more hooks than during the previous render.',
-          );
-          assertLog([]);
-        }).toErrorDev([
-          'Warning: React has detected a change in the order of Hooks called by App. ' +
+        await waitForThrow(
+          'Rendered more hooks than during the previous render.',
+        );
+        assertLog(['Unmount A']);
+        assertConsoleErrorDev([
+          'React has detected a change in the order of Hooks called by App. ' +
             'This will lead to bugs and errors if not fixed. For more information, ' +
-            'read the Rules of Hooks: https://reactjs.org/link/rules-of-hooks\n\n' +
+            'read the Rules of Hooks: https://react.dev/link/rules-of-hooks\n' +
+            '\n' +
             '   Previous render            Next render\n' +
             '   ------------------------------------------------------\n' +
             '1. useEffect                  useEffect\n' +
             '2. undefined                  useEffect\n' +
-            '   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\n',
+            '   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n' +
+            '\n' +
+            '    in App (at **)',
         ]);
       });
 

@@ -13,12 +13,15 @@ describe('ReactMultiChild', () => {
   let React;
   let ReactDOMClient;
   let act;
+  let assertConsoleErrorDev;
 
   beforeEach(() => {
     jest.resetModules();
     React = require('react');
     ReactDOMClient = require('react-dom/client');
     act = require('internal-test-utils').act;
+    assertConsoleErrorDev =
+      require('internal-test-utils').assertConsoleErrorDev;
   });
 
   describe('reconciliation', () => {
@@ -216,22 +219,23 @@ describe('ReactMultiChild', () => {
         root.render(<Parent>{[<div key="1" />]}</Parent>);
       });
 
-      await expect(
-        async () =>
-          await act(async () => {
-            root.render(<Parent>{[<div key="1" />, <div key="1" />]}</Parent>);
-          }),
-      ).toErrorDev(
+      await act(async () => {
+        root.render(<Parent>{[<div key="1" />, <div key="1" />]}</Parent>);
+      });
+      assertConsoleErrorDev([
         'Encountered two children with the same key, `1`. ' +
           'Keys should be unique so that components maintain their identity ' +
           'across updates. Non-unique keys may cause children to be ' +
           'duplicated and/or omitted — the behavior is unsupported and ' +
           'could change in a future version.\n' +
-          '    in div (at **)\n' +
-          '    in WrapperComponent (at **)\n' +
-          '    in div (at **)\n' +
-          '    in Parent (at **)',
-      );
+          '    in div (at **)' +
+          (gate(flags => flags.enableOwnerStacks)
+            ? ''
+            : '\n    in div (at **)' +
+              '\n    in WrapperComponent (at **)' +
+              '\n    in div (at **)' +
+              '\n    in Parent (at **)'),
+      ]);
     });
 
     it('should warn for duplicated iterable keys with component stack info', async () => {
@@ -275,26 +279,25 @@ describe('ReactMultiChild', () => {
         root.render(<Parent>{createIterable([<div key="1" />])}</Parent>);
       });
 
-      await expect(
-        async () =>
-          await act(async () => {
-            root.render(
-              <Parent>
-                {createIterable([<div key="1" />, <div key="1" />])}
-              </Parent>,
-            );
-          }),
-      ).toErrorDev(
+      await act(async () => {
+        root.render(
+          <Parent>{createIterable([<div key="1" />, <div key="1" />])}</Parent>,
+        );
+      });
+      assertConsoleErrorDev([
         'Encountered two children with the same key, `1`. ' +
           'Keys should be unique so that components maintain their identity ' +
           'across updates. Non-unique keys may cause children to be ' +
           'duplicated and/or omitted — the behavior is unsupported and ' +
           'could change in a future version.\n' +
-          '    in div (at **)\n' +
-          '    in WrapperComponent (at **)\n' +
-          '    in div (at **)\n' +
-          '    in Parent (at **)',
-      );
+          '    in div (at **)' +
+          (gate(flags => flags.enableOwnerStacks)
+            ? ''
+            : '\n    in div (at **)' +
+              '\n    in WrapperComponent (at **)' +
+              '\n    in div (at **)' +
+              '\n    in Parent (at **)'),
+      ]);
     });
   });
 
@@ -315,20 +318,18 @@ describe('ReactMultiChild', () => {
     }
     const container = document.createElement('div');
     const root = ReactDOMClient.createRoot(container);
-    await expect(
-      async () =>
-        await act(async () => {
-          root.render(<Parent />);
-        }),
-    ).toErrorDev(
+    await act(async () => {
+      root.render(<Parent />);
+    });
+    assertConsoleErrorDev([
       'Using Maps as children is not supported. ' +
         'Use an array of keyed ReactElements instead.\n' +
         '    in div (at **)\n' +
         '    in Parent (at **)',
-    );
+    ]);
   });
 
-  it('should warn for using generators as children', async () => {
+  it('should NOT warn for using generator functions as components', async () => {
     function* Foo() {
       yield <h1 key="1">Hello</h1>;
       yield <h1 key="2">World</h1>;
@@ -336,17 +337,83 @@ describe('ReactMultiChild', () => {
 
     const container = document.createElement('div');
     const root = ReactDOMClient.createRoot(container);
-    await expect(async () => {
-      await act(async () => {
-        root.render(<Foo />);
-      });
-    }).toErrorDev(
-      'Using Generators as children is unsupported and will likely yield ' +
-        'unexpected results because enumerating a generator mutates it. You may ' +
-        'convert it to an array with `Array.from()` or the `[...spread]` operator ' +
-        'before rendering. Keep in mind you might need to polyfill these features for older browsers.\n' +
+    await act(async () => {
+      root.render(<Foo />);
+    });
+
+    expect(container.textContent).toBe('HelloWorld');
+  });
+
+  it('should warn for using generators as children props', async () => {
+    function* getChildren() {
+      yield <h1 key="1">Hello</h1>;
+      yield <h1 key="2">World</h1>;
+    }
+
+    function Foo() {
+      const children = getChildren();
+      return <div>{children}</div>;
+    }
+
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    await act(async () => {
+      root.render(<Foo />);
+    });
+    assertConsoleErrorDev([
+      'Using Iterators as children is unsupported and will likely yield ' +
+        'unexpected results because enumerating a generator mutates it. ' +
+        'You may convert it to an array with `Array.from()` or the ' +
+        '`[...spread]` operator before rendering. You can also use an ' +
+        'Iterable that can iterate multiple times over the same items.\n' +
+        '    in div (at **)\n' +
         '    in Foo (at **)',
-    );
+    ]);
+
+    expect(container.textContent).toBe('HelloWorld');
+
+    // Test de-duplication
+    await act(async () => {
+      root.render(<Foo />);
+    });
+  });
+
+  it('should warn for using other types of iterators as children', async () => {
+    function Foo() {
+      let i = 0;
+      const iterator = {
+        [Symbol.iterator]() {
+          return iterator;
+        },
+        next() {
+          switch (i++) {
+            case 0:
+              return {done: false, value: <h1 key="1">Hello</h1>};
+            case 1:
+              return {done: false, value: <h1 key="2">World</h1>};
+            default:
+              return {done: true, value: undefined};
+          }
+        },
+      };
+      return iterator;
+    }
+
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    await act(async () => {
+      root.render(<Foo />);
+    });
+    assertConsoleErrorDev([
+      'Using Iterators as children is unsupported and will likely yield ' +
+        'unexpected results because enumerating a generator mutates it. ' +
+        'You may convert it to an array with `Array.from()` or the ' +
+        '`[...spread]` operator before rendering. You can also use an ' +
+        'Iterable that can iterate multiple times over the same items.\n' +
+        '    in Foo (at **)',
+    ]);
+
+    expect(container.textContent).toBe('HelloWorld');
 
     // Test de-duplication
     await act(async () => {

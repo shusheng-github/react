@@ -16,6 +16,7 @@ let PropTypes;
 let React;
 let ReactDOMClient;
 let ReactDOMServer;
+let assertConsoleErrorDev;
 
 function initModules() {
   // Reset warning cache.
@@ -24,6 +25,7 @@ function initModules() {
   React = require('react');
   ReactDOMClient = require('react-dom/client');
   ReactDOMServer = require('react-dom/server');
+  assertConsoleErrorDev = require('internal-test-utils').assertConsoleErrorDev;
 
   // Make them available to the helpers.
   return {
@@ -43,12 +45,19 @@ describe('ReactDOMServerIntegration', () => {
   beforeEach(() => {
     resetModules();
   });
+  afterEach(() => {
+    // TODO: This is a hack because expectErrors does not restore mock,
+    // however fixing it requires a major refactor to all these tests.
+    if (console.error.mockClear) {
+      console.error.mockRestore();
+    }
+  });
 
   describe('legacy context', function () {
     // The `itRenders` test abstraction doesn't work with @gate so we have
     // to do this instead.
     if (gate(flags => flags.disableLegacyContext)) {
-      test('empty test to stop Jest from being a complainy complainer', () => {});
+      it('empty test to stop Jest from being a complainy complainer', () => {});
       return;
     }
 
@@ -80,11 +89,15 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <ClassChildWithContext />
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('purple');
     });
 
     itRenders('stateless child with context', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       function FunctionChildWithContext(props, context) {
         return <div>{context.text}</div>;
       }
@@ -94,6 +107,7 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <FunctionChildWithContext />
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('purple');
     });
@@ -110,11 +124,15 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <ClassChildWithoutContext />
         </PurpleContext>,
+        1,
       );
       expect(e.textContent).toBe('');
     });
 
     itRenders('stateless child without context', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       function FunctionChildWithoutContext(props, context) {
         // this should render blank; context isn't passed to this component.
         return <div>{context.text}</div>;
@@ -124,6 +142,7 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <FunctionChildWithoutContext />
         </PurpleContext>,
+        1,
       );
       expect(e.textContent).toBe('');
     });
@@ -141,11 +160,15 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <ClassChildWithWrongContext />
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('');
     });
 
     itRenders('stateless child with wrong context', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       function FunctionChildWithWrongContext(props, context) {
         // this should render blank; context.text isn't passed to this component.
         return <div id="statelessWrongChild">{context.text}</div>;
@@ -158,11 +181,15 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <FunctionChildWithWrongContext />
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('');
     });
 
     itRenders('with context passed through to a grandchild', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       function Grandchild(props, context) {
         return <div>{context.text}</div>;
       }
@@ -174,11 +201,15 @@ describe('ReactDOMServerIntegration', () => {
         <PurpleContext>
           <Child />
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('purple');
     });
 
     itRenders('a child context overriding a parent context', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       const Grandchild = (props, context) => {
         return <div>{context.text}</div>;
       };
@@ -190,11 +221,15 @@ describe('ReactDOMServerIntegration', () => {
             <Grandchild />
           </RedContext>
         </PurpleContext>,
+        2,
       );
       expect(e.textContent).toBe('red');
     });
 
     itRenders('a child context merged with a parent context', async render => {
+      if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+        return;
+      }
       class Parent extends React.Component {
         getChildContext() {
           return {text1: 'purple'};
@@ -228,7 +263,7 @@ describe('ReactDOMServerIntegration', () => {
         text2: PropTypes.string,
       };
 
-      const e = await render(<Parent />);
+      const e = await render(<Parent />, 3);
       expect(e.querySelector('#first').textContent).toBe('purple');
       expect(e.querySelector('#second').textContent).toBe('red');
     });
@@ -236,6 +271,9 @@ describe('ReactDOMServerIntegration', () => {
     itRenders(
       'with a call to componentWillMount before getChildContext',
       async render => {
+        if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+          return;
+        }
         class WillMountContext extends React.Component {
           getChildContext() {
             return {text: this.state.text};
@@ -254,7 +292,7 @@ describe('ReactDOMServerIntegration', () => {
         };
         Child.contextTypes = {text: PropTypes.string};
 
-        const e = await render(<WillMountContext />);
+        const e = await render(<WillMountContext />, 2);
         expect(e.textContent).toBe('foo');
       },
     );
@@ -262,6 +300,9 @@ describe('ReactDOMServerIntegration', () => {
     itRenders(
       'if getChildContext exists but childContextTypes is missing with a warning',
       async render => {
+        if (gate(flags => flags.disableLegacyContextForFunctionComponents)) {
+          return;
+        }
         function HopefulChild(props, context) {
           return context.foo || 'nope';
         }
@@ -278,7 +319,8 @@ describe('ReactDOMServerIntegration', () => {
         }
         const e = await render(
           <ForgetfulParent />,
-          render === clientRenderOnBadMarkup ? 4 : 1,
+          // Some warning is not de-duped and logged again on the client retry render.
+          render === clientRenderOnBadMarkup ? 3 : 2,
         );
         expect(e.textContent).toBe('nope');
       },
@@ -311,12 +353,11 @@ describe('ReactDOMServerIntegration', () => {
         }
       }
 
-      expect(() => {
-        ReactDOMServer.renderToString(<MyComponent />);
-      }).toErrorDev(
-        'Warning: MyComponent.getChildContext(): childContextTypes must be defined in order to use getChildContext().\n' +
+      ReactDOMServer.renderToString(<MyComponent />);
+      assertConsoleErrorDev([
+        'MyComponent.getChildContext(): childContextTypes must be defined in order to use getChildContext().\n' +
           '    in MyComponent (at **)',
-      );
+      ]);
     });
   });
 });

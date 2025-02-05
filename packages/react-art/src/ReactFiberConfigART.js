@@ -5,12 +5,23 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import type {EventPriority} from 'react-reconciler/src/ReactEventPriorities';
+
 import Transform from 'art/core/transform';
 import Mode from 'art/modes/current';
 
 import {TYPES, EVENT_TYPES, childrenAsString} from './ReactARTInternals';
 
-import {DefaultEventPriority} from 'react-reconciler/src/ReactEventPriorities';
+import {
+  DefaultEventPriority,
+  NoEventPriority,
+} from 'react-reconciler/src/ReactEventPriorities';
+import type {ReactContext} from 'shared/ReactTypes';
+import {REACT_CONTEXT_TYPE} from 'shared/ReactSymbols';
+
+export {default as rendererVersion} from 'shared/ReactVersion';
+export const rendererPackageName = 'react-art';
+export const extraDevToolsConfig = null;
 
 const pooledTransform = new Transform();
 
@@ -18,6 +29,8 @@ const NO_CONTEXT = {};
 if (__DEV__) {
   Object.freeze(NO_CONTEXT);
 }
+
+export type TransitionStatus = mixed;
 
 /** Helper Methods */
 
@@ -336,8 +349,28 @@ export function shouldSetTextContent(type, props) {
   );
 }
 
-export function getCurrentEventPriority() {
-  return DefaultEventPriority;
+let currentUpdatePriority: EventPriority = NoEventPriority;
+
+export function setCurrentUpdatePriority(newPriority: EventPriority): void {
+  currentUpdatePriority = newPriority;
+}
+
+export function getCurrentUpdatePriority(): EventPriority {
+  return currentUpdatePriority;
+}
+
+export function resolveUpdatePriority(): EventPriority {
+  return currentUpdatePriority || DefaultEventPriority;
+}
+
+export function trackSchedulerEvent(): void {}
+
+export function resolveEventType(): null | string {
+  return null;
+}
+
+export function resolveEventTimeStamp(): number {
+  return -1.1;
 }
 
 export function shouldAttemptEagerTransition() {
@@ -400,13 +433,7 @@ export function commitMount(instance, type, newProps) {
   // Noop
 }
 
-export function commitUpdate(
-  instance,
-  updatePayload,
-  type,
-  oldProps,
-  newProps,
-) {
+export function commitUpdate(instance, type, oldProps, newProps) {
   instance._applyProps(instance, newProps, oldProps);
 }
 
@@ -428,12 +455,65 @@ export function unhideTextInstance(textInstance, text): void {
   // Noop
 }
 
+export function applyViewTransitionName(instance, name, className) {
+  // Noop
+}
+
+export function restoreViewTransitionName(instance, props) {
+  // Noop
+}
+
+export function cancelViewTransitionName(instance, name, props) {
+  // Noop
+}
+
+export function cancelRootViewTransitionName(rootContainer) {
+  // Noop
+}
+
+export function restoreRootViewTransitionName(rootContainer) {
+  // Noop
+}
+
+export type InstanceMeasurement = null;
+
+export function measureInstance(instance) {
+  return null;
+}
+
+export function wasInstanceInViewport(measurement): boolean {
+  return true;
+}
+
+export function hasInstanceChanged(oldMeasurement, newMeasurement): boolean {
+  return false;
+}
+
+export function hasInstanceAffectedParent(
+  oldMeasurement,
+  newMeasurement,
+): boolean {
+  return false;
+}
+
+export function startViewTransition() {
+  return false;
+}
+
+export type ViewTransitionInstance = null | {name: string, ...};
+
+export function createViewTransitionInstance(
+  name: string,
+): ViewTransitionInstance {
+  return null;
+}
+
 export function clearContainer(container) {
   // TODO Implement this
 }
 
-export function getInstanceFromNode(node) {
-  throw new Error('Not implemented.');
+export function getInstanceFromNode(node): null {
+  return null;
 }
 
 export function beforeActiveInstanceBlur(internalInstanceHandle: Object) {
@@ -470,8 +550,19 @@ export function startSuspendingCommit() {}
 
 export function suspendInstance(type, props) {}
 
+export function suspendOnActiveViewTransition(container) {}
+
 export function waitForCommitToBeReady() {
   return null;
 }
 
 export const NotPendingTransition = null;
+export const HostTransitionContext: ReactContext<TransitionStatus> = {
+  $$typeof: REACT_CONTEXT_TYPE,
+  Provider: (null: any),
+  Consumer: (null: any),
+  _currentValue: NotPendingTransition,
+  _currentValue2: NotPendingTransition,
+  _threadCount: 0,
+};
+export function resetFormInstance() {}

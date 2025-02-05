@@ -9,11 +9,11 @@
 
 let React;
 let ReactDOMClient;
-let ReactTestUtils;
 let Scheduler;
 let act;
 let container;
 let assertLog;
+let assertConsoleErrorDev;
 
 jest.useRealTimers();
 
@@ -27,7 +27,7 @@ function sleep(period) {
   });
 }
 
-describe('ReactTestUtils.act()', () => {
+describe('React.act()', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -84,12 +84,12 @@ function runActTests(render, unmount, rerender) {
       jest.resetModules();
       React = require('react');
       ReactDOMClient = require('react-dom/client');
-      ReactTestUtils = require('react-dom/test-utils');
       Scheduler = require('scheduler');
-      act = ReactTestUtils.act;
+      act = React.act;
 
       const InternalTestUtils = require('internal-test-utils');
       assertLog = InternalTestUtils.assertLog;
+      assertConsoleErrorDev = InternalTestUtils.assertConsoleErrorDev;
 
       container = document.createElement('div');
       document.body.appendChild(container);
@@ -207,8 +207,20 @@ function runActTests(render, unmount, rerender) {
           render(<App />, container);
         });
 
-        expect(() => setValue(1)).toErrorDev([
-          'An update to App inside a test was not wrapped in act(...).',
+        setValue(1);
+        assertConsoleErrorDev([
+          'An update to App inside a test was not wrapped in act(...).\n' +
+            '\n' +
+            'When testing, code that causes React state updates should be wrapped into act(...):\n' +
+            '\n' +
+            'act(() => {\n' +
+            '  /* fire events that update state */\n' +
+            '});\n' +
+            '/* assert on the output */\n' +
+            '\n' +
+            "This ensures that you're testing the behavior the user would see in the browser. " +
+            'Learn more at https://react.dev/link/wrap-tests-with-act\n' +
+            '    in App (at **)',
         ]);
       });
 
@@ -234,8 +246,20 @@ function runActTests(render, unmount, rerender) {
           rerender(<App defaultValue={0} />, container);
         });
 
-        expect(() => setValue(1)).toErrorDev([
-          'An update to App inside a test was not wrapped in act(...).',
+        setValue(1);
+        assertConsoleErrorDev([
+          'An update to App inside a test was not wrapped in act(...).\n' +
+            '\n' +
+            'When testing, code that causes React state updates should be wrapped into act(...):\n' +
+            '\n' +
+            'act(() => {\n' +
+            '  /* fire events that update state */\n' +
+            '});\n' +
+            '/* assert on the output */\n' +
+            '\n' +
+            "This ensures that you're testing the behavior the user would see in the browser. " +
+            'Learn more at https://react.dev/link/wrap-tests-with-act\n' +
+            '    in App (at **)',
         ]);
       });
 
@@ -253,9 +277,21 @@ function runActTests(render, unmount, rerender) {
         });
 
         // First show that it does warn
-        expect(() => setState(1)).toErrorDev(
-          'An update to App inside a test was not wrapped in act(...)',
-        );
+        setState(1);
+        assertConsoleErrorDev([
+          'An update to App inside a test was not wrapped in act(...).\n' +
+            '\n' +
+            'When testing, code that causes React state updates should be wrapped into act(...):\n' +
+            '\n' +
+            'act(() => {\n' +
+            '  /* fire events that update state */\n' +
+            '});\n' +
+            '/* assert on the output */\n' +
+            '\n' +
+            "This ensures that you're testing the behavior the user would see in the browser. " +
+            'Learn more at https://react.dev/link/wrap-tests-with-act\n' +
+            '    in App (at **)',
+        ]);
 
         // Now do the same thing again, but disable with the environment flag
         const prevIsActEnvironment = global.IS_REACT_ACT_ENVIRONMENT;
@@ -268,9 +304,21 @@ function runActTests(render, unmount, rerender) {
 
         // When the flag is restored to its previous value, it should start
         // warning again. This shows that React reads the flag each time.
-        expect(() => setState(3)).toErrorDev(
-          'An update to App inside a test was not wrapped in act(...)',
-        );
+        setState(3);
+        assertConsoleErrorDev([
+          'An update to App inside a test was not wrapped in act(...).\n' +
+            '\n' +
+            'When testing, code that causes React state updates should be wrapped into act(...):\n' +
+            '\n' +
+            'act(() => {\n' +
+            '  /* fire events that update state */\n' +
+            '});\n' +
+            '/* assert on the output */\n' +
+            '\n' +
+            "This ensures that you're testing the behavior the user would see in the browser. " +
+            'Learn more at https://react.dev/link/wrap-tests-with-act\n' +
+            '    in App (at **)',
+        ]);
       });
 
       describe('fake timers', () => {

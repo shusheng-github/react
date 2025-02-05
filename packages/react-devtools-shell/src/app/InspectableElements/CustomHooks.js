@@ -21,7 +21,7 @@ import {
   useState,
   use,
 } from 'react';
-import {useFormState} from 'react-dom';
+import {useFormState, useFormStatus} from 'react-dom';
 
 const object = {
   string: 'abc',
@@ -72,7 +72,7 @@ function useDeepHookF() {
 const ContextA = createContext('A');
 const ContextB = createContext('B');
 
-function FunctionWithHooks(props: any, ref: React$Ref<any>) {
+function FunctionWithHooks(props: any, ref: React$RefSetter<any>) {
   const [count, updateCount] = useState(0);
   // eslint-disable-next-line no-unused-vars
   const contextValueA = useContext(ContextA);
@@ -108,7 +108,9 @@ function FunctionWithHooks(props: any, ref: React$Ref<any>) {
 const MemoWithHooks = memo(FunctionWithHooks);
 const ForwardRefWithHooks = forwardRef(FunctionWithHooks);
 
-function wrapWithHoc(Component: (props: any, ref: React$Ref<any>) => any) {
+function wrapWithHoc(
+  Component: (props: any, ref: React$RefSetter<any>) => any,
+) {
   function Hoc() {
     return <Component />;
   }
@@ -119,6 +121,34 @@ function wrapWithHoc(Component: (props: any, ref: React$Ref<any>) => any) {
   return Hoc;
 }
 const HocWithHooks = wrapWithHoc(FunctionWithHooks);
+
+const Suspendender = React.lazy(() => {
+  return new Promise<any>(resolve => {
+    setTimeout(() => {
+      resolve({
+        default: () => 'Finished!',
+      });
+    }, 3000);
+  });
+});
+function Transition() {
+  const [show, setShow] = React.useState(false);
+  const [isPending, startTransition] = React.useTransition();
+
+  return (
+    <div>
+      <React.Suspense fallback="Loading">
+        {isPending ? 'Pending' : null}
+        {show ? <Suspendender /> : null}
+      </React.Suspense>
+      {!show && (
+        <button onClick={() => startTransition(() => setShow(true))}>
+          Transition
+        </button>
+      )}
+    </div>
+  );
+}
 
 function incrementWithDelay(previousState: number, formData: FormData) {
   const incrementDelay = +formData.get('incrementDelay');
@@ -134,6 +164,12 @@ function incrementWithDelay(previousState: number, formData: FormData) {
       }
     }, incrementDelay);
   });
+}
+
+function FormStatus() {
+  const status = useFormStatus();
+
+  return <pre>{JSON.stringify(status)}</pre>;
 }
 
 function Forms() {
@@ -156,6 +192,7 @@ function Forms() {
         <input name="shouldReject" type="checkbox" />
       </label>
       <button formAction={formAction}>Increment</button>
+      <FormStatus />
     </form>
   );
 }
@@ -183,6 +220,7 @@ export default function CustomHooks(): React.Node {
       <MemoWithHooks />
       <ForwardRefWithHooks />
       <HocWithHooks />
+      <Transition />
       <ErrorBoundary>
         <Forms />
       </ErrorBoundary>

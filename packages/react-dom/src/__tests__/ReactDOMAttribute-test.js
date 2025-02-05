@@ -13,12 +13,15 @@ describe('ReactDOM unknown attribute', () => {
   let React;
   let ReactDOMClient;
   let act;
+  let assertConsoleErrorDev;
 
   beforeEach(() => {
     jest.resetModules();
     React = require('react');
     ReactDOMClient = require('react-dom/client');
     act = require('internal-test-utils').act;
+    assertConsoleErrorDev =
+      require('internal-test-utils').assertConsoleErrorDev;
   });
 
   async function testUnknownAttributeRemoval(givenValue) {
@@ -62,12 +65,13 @@ describe('ReactDOM unknown attribute', () => {
     });
 
     it('changes values true, false to null, and also warns once', async () => {
-      await expect(() => testUnknownAttributeAssignment(true, null)).toErrorDev(
+      await testUnknownAttributeAssignment(true, null);
+      assertConsoleErrorDev([
         'Received `true` for a non-boolean attribute `unknown`.\n\n' +
           'If you want to write it to the DOM, pass a string instead: ' +
           'unknown="true" or unknown={value.toString()}.\n' +
           '    in div (at **)',
-      );
+      ]);
       await testUnknownAttributeAssignment(false, null);
     });
 
@@ -88,6 +92,40 @@ describe('ReactDOM unknown attribute', () => {
       expect(el.firstChild.hasAttribute('unknown')).toBe(false);
     });
 
+    it('removes new boolean props', async () => {
+      const el = document.createElement('div');
+      const root = ReactDOMClient.createRoot(el);
+
+      await act(() => {
+        root.render(<div inert={true} />);
+      });
+
+      expect(el.firstChild.getAttribute('inert')).toBe(true ? '' : null);
+    });
+
+    it('warns once for empty strings in new boolean props', async () => {
+      const el = document.createElement('div');
+      const root = ReactDOMClient.createRoot(el);
+
+      await act(() => {
+        root.render(<div inert="" />);
+      });
+      assertConsoleErrorDev([
+        'Received an empty string for a boolean attribute `inert`. ' +
+          'This will treat the attribute as if it were false. ' +
+          'Either pass `false` to silence this warning, or ' +
+          'pass `true` if you used an empty string in earlier versions of React to indicate this attribute is true.\n' +
+          '    in div (at **)',
+      ]);
+
+      expect(el.firstChild.getAttribute('inert')).toBe(true ? null : '');
+
+      // The warning is only printed once.
+      await act(() => {
+        root.render(<div inert="" />);
+      });
+    });
+
     it('passes through strings', async () => {
       await testUnknownAttributeAssignment('a string', 'a string');
     });
@@ -100,11 +138,12 @@ describe('ReactDOM unknown attribute', () => {
     });
 
     it('coerces NaN to strings and warns', async () => {
-      await expect(() => testUnknownAttributeAssignment(NaN, 'NaN')).toErrorDev(
-        'Warning: Received NaN for the `unknown` attribute. ' +
+      await testUnknownAttributeAssignment(NaN, 'NaN');
+      assertConsoleErrorDev([
+        'Received NaN for the `unknown` attribute. ' +
           'If this is expected, cast the value to a string.\n' +
           '    in div (at **)',
-      );
+      ]);
     });
 
     it('coerces objects to strings and warns', async () => {
@@ -131,52 +170,52 @@ describe('ReactDOM unknown attribute', () => {
       }
       const test = () =>
         testUnknownAttributeAssignment(new TemporalLike(), null);
-      await expect(() =>
-        expect(test).rejects.toThrowError(new TypeError('prod message')),
-      ).toErrorDev(
-        'Warning: The provided `unknown` attribute is an unsupported type TemporalLike.' +
-          ' This value must be coerced to a string before using it here.',
-      );
+
+      await expect(test).rejects.toThrowError(new TypeError('prod message'));
+      assertConsoleErrorDev([
+        'The provided `unknown` attribute is an unsupported type TemporalLike.' +
+          ' This value must be coerced to a string before using it here.\n' +
+          '    in div (at **)',
+      ]);
     });
 
     it('removes symbols and warns', async () => {
-      await expect(() => testUnknownAttributeRemoval(Symbol('foo'))).toErrorDev(
-        'Warning: Invalid value for prop `unknown` on <div> tag. Either remove it ' +
+      await testUnknownAttributeRemoval(Symbol('foo'));
+      assertConsoleErrorDev([
+        'Invalid value for prop `unknown` on <div> tag. Either remove it ' +
           'from the element, or pass a string or number value to keep it ' +
-          'in the DOM. For details, see https://reactjs.org/link/attribute-behavior \n' +
+          'in the DOM. For details, see https://react.dev/link/attribute-behavior \n' +
           '    in div (at **)',
-      );
+      ]);
     });
 
     it('removes functions and warns', async () => {
-      await expect(() =>
-        testUnknownAttributeRemoval(function someFunction() {}),
-      ).toErrorDev(
-        'Warning: Invalid value for prop `unknown` on <div> tag. Either remove ' +
+      await testUnknownAttributeRemoval(function someFunction() {});
+      assertConsoleErrorDev([
+        'Invalid value for prop `unknown` on <div> tag. Either remove ' +
           'it from the element, or pass a string or number value to ' +
           'keep it in the DOM. For details, see ' +
-          'https://reactjs.org/link/attribute-behavior \n' +
+          'https://react.dev/link/attribute-behavior \n' +
           '    in div (at **)',
-      );
+      ]);
     });
 
     it('allows camelCase unknown attributes and warns', async () => {
       const el = document.createElement('div');
 
-      await expect(async () => {
-        const root = ReactDOMClient.createRoot(el);
+      const root = ReactDOMClient.createRoot(el);
 
-        await act(() => {
-          root.render(<div helloWorld="something" />);
-        });
-      }).toErrorDev(
+      await act(() => {
+        root.render(<div helloWorld="something" />);
+      });
+      assertConsoleErrorDev([
         'React does not recognize the `helloWorld` prop on a DOM element. ' +
           'If you intentionally want it to appear in the DOM as a custom ' +
           'attribute, spell it as lowercase `helloworld` instead. ' +
           'If you accidentally passed it from a parent component, remove ' +
           'it from the DOM element.\n' +
           '    in div (at **)',
-      );
+      ]);
 
       expect(el.firstChild.getAttribute('helloworld')).toBe('something');
     });

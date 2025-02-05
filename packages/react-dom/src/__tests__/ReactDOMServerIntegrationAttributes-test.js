@@ -11,12 +11,12 @@
 'use strict';
 
 const ReactDOMServerIntegrationUtils = require('./utils/ReactDOMServerIntegrationTestUtils');
-const ReactFeatureFlags = require('shared/ReactFeatureFlags');
 
 let React;
 let ReactDOM;
 let ReactDOMClient;
 let ReactDOMServer;
+let assertConsoleErrorDev;
 
 function initModules() {
   // Reset warning cache.
@@ -25,6 +25,7 @@ function initModules() {
   ReactDOM = require('react-dom');
   ReactDOMClient = require('react-dom/client');
   ReactDOMServer = require('react-dom/server');
+  assertConsoleErrorDev = require('internal-test-utils').assertConsoleErrorDev;
 
   // Make them available to the helpers.
   return {
@@ -40,6 +41,13 @@ describe('ReactDOMServerIntegration', () => {
   beforeEach(() => {
     resetModules();
   });
+  afterEach(() => {
+    // TODO: This is a hack because expectErrors does not restore mock,
+    // however fixing it requires a major refactor to all these tests.
+    if (console.error.mockClear) {
+      console.error.mockRestore();
+    }
+  });
 
   describe('property to attribute mapping', function () {
     describe('string properties', function () {
@@ -54,13 +62,8 @@ describe('ReactDOMServerIntegration', () => {
       });
 
       itRenders('empty src on img', async render => {
-        const e = await render(
-          <img src="" />,
-          ReactFeatureFlags.enableFilterEmptyStringAttributesDOM ? 1 : 0,
-        );
-        expect(e.getAttribute('src')).toBe(
-          ReactFeatureFlags.enableFilterEmptyStringAttributesDOM ? null : '',
-        );
+        const e = await render(<img src="" />, 1);
+        expect(e.getAttribute('src')).toBe(null);
       });
 
       itRenders('empty href on anchor', async render => {
@@ -68,21 +71,24 @@ describe('ReactDOMServerIntegration', () => {
         expect(e.getAttribute('href')).toBe('');
       });
 
-      itRenders('empty href on other tags', async render => {
+      itRenders('empty href on base tags as null', async render => {
+        const e = await render(<base href="" />, 1);
+        expect(e.getAttribute('href')).toBe(null);
+      });
+
+      itRenders('empty href on area tags as null', async render => {
         const e = await render(
-          // <link href="" /> would be more sensible.
-          // However, that results in a hydration warning as well.
-          // Our test helpers do not support different error counts for initial
-          // server render and hydration.
-          // The number of errors on the server need to be equal to the number of
-          // errors during hydration.
-          // So we use a <div> instead.
-          <div href="" />,
-          ReactFeatureFlags.enableFilterEmptyStringAttributesDOM ? 1 : 0,
+          <map>
+            <area alt="" href="" />
+          </map>,
+          1,
         );
-        expect(e.getAttribute('href')).toBe(
-          ReactFeatureFlags.enableFilterEmptyStringAttributesDOM ? null : '',
-        );
+        expect(e.firstChild.getAttribute('href')).toBe(null);
+      });
+
+      itRenders('empty href on link tags as null', async render => {
+        const e = await render(<link rel="stylesheet" href="" />, 1);
+        expect(e.getAttribute('href')).toBe(null);
       });
 
       itRenders('no string prop with true value', async render => {
@@ -636,14 +642,15 @@ describe('ReactDOMServerIntegration', () => {
         // However this particular warning fires only when creating
         // DOM nodes on the client side. We force it to fire early
         // so that it gets deduplicated later, and doesn't fail the test.
-        expect(() => {
-          ReactDOM.flushSync(() => {
-            const root = ReactDOMClient.createRoot(
-              document.createElement('div'),
-            );
-            root.render(<nonstandard />);
-          });
-        }).toErrorDev('The tag <nonstandard> is unrecognized in this browser.');
+        ReactDOM.flushSync(() => {
+          const root = ReactDOMClient.createRoot(document.createElement('div'));
+          root.render(<nonstandard />);
+        });
+        assertConsoleErrorDev([
+          'The tag <nonstandard> is unrecognized in this browser. ' +
+            'If you meant to render a React component, start its name with an uppercase letter.\n' +
+            '    in nonstandard (at **)',
+        ]);
 
         const e = await render(<nonstandard foo="bar" />);
         expect(e.getAttribute('foo')).toBe('bar');
@@ -699,13 +706,8 @@ describe('ReactDOMServerIntegration', () => {
 
     itRenders('className for custom elements', async render => {
       const e = await render(<custom-element className="test" />, 0);
-      if (ReactFeatureFlags.enableCustomElementPropertySupport) {
-        expect(e.getAttribute('className')).toBe(null);
-        expect(e.getAttribute('class')).toBe('test');
-      } else {
-        expect(e.getAttribute('className')).toBe('test');
-        expect(e.getAttribute('class')).toBe(null);
-      }
+      expect(e.getAttribute('className')).toBe(null);
+      expect(e.getAttribute('class')).toBe('test');
     });
 
     itRenders('htmlFor property on is elements', async render => {
@@ -738,20 +740,35 @@ describe('ReactDOMServerIntegration', () => {
 
     itRenders('unknown boolean `true` attributes as strings', async render => {
       const e = await render(<custom-element foo={true} />);
-      if (ReactFeatureFlags.enableCustomElementPropertySupport) {
-        expect(e.getAttribute('foo')).toBe('');
-      } else {
-        expect(e.getAttribute('foo')).toBe('true');
-      }
+      expect(e.getAttribute('foo')).toBe('');
     });
 
     itRenders('unknown boolean `false` attributes as strings', async render => {
       const e = await render(<custom-element foo={false} />);
-      if (ReactFeatureFlags.enableCustomElementPropertySupport) {
-        expect(e.getAttribute('foo')).toBe(null);
-      } else {
-        expect(e.getAttribute('foo')).toBe('false');
-      }
+      expect(e.getAttribute('foo')).toBe(null);
+    });
+
+    itRenders('new boolean `true` attributes', async render => {
+      const element = await render(<div inert={true} />, 0);
+
+      expect(element.getAttribute('inert')).toBe('');
+    });
+
+    itRenders('new boolean `""` attributes', async render => {
+      const element = await render(
+        <div inert="" />,
+        // Warns since this used to render `inert=""` like `inert={true}`
+        // but now renders it like `inert={false}`.
+        1,
+      );
+
+      expect(element.getAttribute('inert')).toBe(null);
+    });
+
+    itRenders('new boolean `false` attributes', async render => {
+      const element = await render(<div inert={false} />, 0);
+
+      expect(element.getAttribute('inert')).toBe(null);
     });
 
     itRenders(

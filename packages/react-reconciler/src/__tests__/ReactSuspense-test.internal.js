@@ -1,7 +1,6 @@
 let React;
 let ReactDOMClient;
 let ReactDOM;
-let ReactFeatureFlags;
 let Scheduler;
 let Suspense;
 let act;
@@ -16,9 +15,6 @@ let waitFor;
 describe('ReactSuspense', () => {
   beforeEach(() => {
     jest.resetModules();
-    ReactFeatureFlags = require('shared/ReactFeatureFlags');
-
-    ReactFeatureFlags.replayFailedUnitOfWorkWithInvokeGuardedCallback = false;
     React = require('react');
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
@@ -111,7 +107,7 @@ describe('ReactSuspense', () => {
         <Suspense fallback={<Text text="Loading..." />}>
           {renderBar ? (
             <Bar>
-              <AsyncText text="A" ms={100} />
+              <AsyncText text="A" />
               <Text text="B" />
             </Bar>
           ) : null}
@@ -139,6 +135,9 @@ describe('ReactSuspense', () => {
       'Bar',
       // A suspends
       'Suspend! [A]',
+
+      ...(gate('enableSiblingPrerendering') ? ['B'] : []),
+
       'Loading...',
     ]);
     expect(container.textContent).toEqual('');
@@ -157,10 +156,10 @@ describe('ReactSuspense', () => {
     root.render(
       <>
         <Suspense fallback={<Text text="Loading A..." />}>
-          <AsyncText text="A" ms={5000} />
+          <AsyncText text="A" />
         </Suspense>
         <Suspense fallback={<Text text="Loading B..." />}>
-          <AsyncText text="B" ms={6000} />
+          <AsyncText text="B" />
         </Suspense>
       </>,
     );
@@ -170,13 +169,23 @@ describe('ReactSuspense', () => {
       'Loading A...',
       'Suspend! [B]',
       'Loading B...',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [A]', 'Suspend! [B]']
+        : []),
     ]);
     expect(container.innerHTML).toEqual('Loading A...Loading B...');
 
     // Resolve first Suspense's promise and switch back to the normal view. The
     // second Suspense should still show the placeholder
     await act(() => resolveText('A'));
-    assertLog(['A']);
+    assertLog([
+      'A',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [B]', 'Suspend! [B]']
+        : []),
+    ]);
     expect(container.textContent).toEqual('ALoading B...');
 
     // Resolve the second Suspense's promise resolves and switche back to the
@@ -262,9 +271,9 @@ describe('ReactSuspense', () => {
       Scheduler.log('Foo');
       return (
         <Suspense fallback={<Text text="Loading..." />}>
-          <AsyncText text="A" ms={200} />
+          <AsyncText text="A" />
           <Suspense fallback={<Text text="Loading more..." />}>
-            <AsyncText text="B" ms={300} />
+            <AsyncText text="B" />
           </Suspense>
         </Suspense>
       );
@@ -275,7 +284,15 @@ describe('ReactSuspense', () => {
       root.render(<Foo />);
     });
 
-    assertLog(['Foo', 'Suspend! [A]', 'Loading...']);
+    assertLog([
+      'Foo',
+      'Suspend! [A]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [A]', 'Suspend! [B]', 'Loading more...']
+        : []),
+    ]);
     expect(container.textContent).toEqual('Loading...');
 
     await resolveText('A');
@@ -293,14 +310,73 @@ describe('ReactSuspense', () => {
     expect(container.textContent).toEqual('AB');
   });
 
+  it('pushes out siblings that render faster than throttle', async () => {
+    function Foo() {
+      Scheduler.log('Foo');
+      return (
+        <Suspense fallback={<Text text="Loading..." />}>
+          <AsyncText text="A" ms={290} />
+          <Suspense fallback={<Text text="Loading more..." />}>
+            <AsyncText text="B" ms={30} />
+          </Suspense>
+        </Suspense>
+      );
+    }
+
+    setTimeout(async () => {
+      // TODO: this is dumb, but AsyncText isn't timer based after the act changes.
+      // Pretend that this is the start of the sibling suspending.
+      // In a real test, the timer would start when we render B.
+      setTimeout(async () => {
+        resolveText('B');
+      }, 30);
+
+      resolveText('A');
+    }, 290);
+
+    // Render an empty shell
+    const root = ReactDOMClient.createRoot(container);
+    root.render(<Foo />);
+    await waitForAll([
+      'Foo',
+      'Suspend! [A]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [A]', 'Suspend! [B]', 'Loading more...']
+        : []),
+    ]);
+    expect(container.textContent).toEqual('Loading...');
+
+    // Now resolve A
+    jest.advanceTimersByTime(290);
+    await waitFor(['A']);
+    expect(container.textContent).toEqual('Loading...');
+
+    // B starts loading. Parent boundary is in throttle.
+    // Still shows parent loading under throttle
+    jest.advanceTimersByTime(10);
+    await waitForAll(['Suspend! [B]', 'Loading more...']);
+    expect(container.textContent).toEqual('Loading...');
+
+    // !! B could have finished before the throttle, but we show a fallback.
+    // !! Pushing out the 30ms fetch for B to 300ms.
+    jest.advanceTimersByTime(300);
+    await waitFor(['B']);
+    expect(container.textContent).toEqual('ALoading more...');
+
+    await act(() => {});
+    expect(container.textContent).toEqual('AB');
+  });
+
   it('does not throttle fallback committing for too long', async () => {
     function Foo() {
       Scheduler.log('Foo');
       return (
         <Suspense fallback={<Text text="Loading..." />}>
-          <AsyncText text="A" ms={200} />
+          <AsyncText text="A" />
           <Suspense fallback={<Text text="Loading more..." />}>
-            <AsyncText text="B" ms={1200} />
+            <AsyncText text="B" />
           </Suspense>
         </Suspense>
       );
@@ -310,7 +386,15 @@ describe('ReactSuspense', () => {
     await act(() => {
       root.render(<Foo />);
     });
-    assertLog(['Foo', 'Suspend! [A]', 'Loading...']);
+    assertLog([
+      'Foo',
+      'Suspend! [A]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [A]', 'Suspend! [B]', 'Loading more...']
+        : []),
+    ]);
     expect(container.textContent).toEqual('Loading...');
 
     await resolveText('A');
@@ -331,74 +415,7 @@ describe('ReactSuspense', () => {
     expect(container.textContent).toEqual('AB');
   });
 
-  // @gate forceConcurrentByDefaultForTesting
-  it(
-    'interrupts current render when something suspends with a ' +
-      "delay and we've already skipped over a lower priority update in " +
-      'a parent',
-    async () => {
-      const root = ReactDOMClient.createRoot(container);
-
-      function interrupt() {
-        // React has a heuristic to batch all updates that occur within the same
-        // event. This is a trick to circumvent that heuristic.
-        ReactDOM.render('whatever', document.createElement('div'));
-      }
-
-      function App({shouldSuspend, step}) {
-        return (
-          <>
-            <Text text={`A${step}`} />
-            <Suspense fallback={<Text text="Loading..." />}>
-              {shouldSuspend ? <AsyncText text="Async" ms={2000} /> : null}
-            </Suspense>
-            <Text text={`B${step}`} />
-            <Text text={`C${step}`} />
-          </>
-        );
-      }
-
-      root.render(<App shouldSuspend={false} step={0} />);
-      await waitForAll(['A0', 'B0', 'C0']);
-      expect(container.textContent).toEqual('A0B0C0');
-
-      // This update will suspend.
-      root.render(<App shouldSuspend={true} step={1} />);
-
-      // Do a bit of work
-      await waitFor(['A1']);
-
-      // Schedule another update. This will have lower priority because it's
-      // a transition.
-      React.startTransition(() => {
-        root.render(<App shouldSuspend={false} step={2} />);
-      });
-
-      // Interrupt to trigger a restart.
-      interrupt();
-
-      await waitFor([
-        // Should have restarted the first update, because of the interruption
-        'A1',
-        'Suspend! [Async]',
-        'Loading...',
-        'B1',
-      ]);
-
-      // Should not have committed loading state
-      expect(container.textContent).toEqual('A0B0C0');
-
-      // After suspending, should abort the first update and switch to the
-      // second update. So, C1 should not appear in the log.
-      // TODO: This should work even if React does not yield to the main
-      // thread. Should use same mechanism as selective hydration to interrupt
-      // the render before the end of the current slice of work.
-      await waitForAll(['A2', 'B2', 'C2']);
-
-      expect(container.textContent).toEqual('A2B2C2');
-    },
-  );
-
+  // @gate !disableLegacyMode
   it('mounts a lazy class component in non-concurrent mode (legacy)', async () => {
     class Class extends React.Component {
       componentDidMount() {
@@ -462,14 +479,24 @@ describe('ReactSuspense', () => {
     await act(() => {
       root.render(<App />);
     });
-    assertLog(['Suspend! [default]', 'Loading...']);
+    assertLog([
+      'Suspend! [default]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [default]'] : []),
+    ]);
 
     await act(() => resolveText('default'));
     assertLog(['default']);
     expect(container.textContent).toEqual('default');
 
     await act(() => setValue('new value'));
-    assertLog(['Suspend! [new value]', 'Loading...']);
+    assertLog([
+      'Suspend! [new value]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [new value]'] : []),
+    ]);
 
     await act(() => resolveText('new value'));
     assertLog(['new value']);
@@ -509,14 +536,24 @@ describe('ReactSuspense', () => {
     await act(() => {
       root.render(<App />);
     });
-    assertLog(['Suspend! [default]', 'Loading...']);
+    assertLog([
+      'Suspend! [default]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [default]'] : []),
+    ]);
 
     await act(() => resolveText('default'));
     assertLog(['default']);
     expect(container.textContent).toEqual('default');
 
     await act(() => setValue('new value'));
-    assertLog(['Suspend! [new value]', 'Loading...']);
+    assertLog([
+      'Suspend! [new value]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [new value]'] : []),
+    ]);
 
     await act(() => resolveText('new value'));
     assertLog(['new value']);
@@ -553,14 +590,24 @@ describe('ReactSuspense', () => {
         </App>,
       );
     });
-    assertLog(['Suspend! [default]', 'Loading...']);
+    assertLog([
+      'Suspend! [default]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [default]'] : []),
+    ]);
 
     await act(() => resolveText('default'));
     assertLog(['default']);
     expect(container.textContent).toEqual('default');
 
     await act(() => setValue('new value'));
-    assertLog(['Suspend! [new value]', 'Loading...']);
+    assertLog([
+      'Suspend! [new value]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [new value]'] : []),
+    ]);
 
     await act(() => resolveText('new value'));
     assertLog(['new value']);
@@ -597,14 +644,24 @@ describe('ReactSuspense', () => {
         </App>,
       );
     });
-    assertLog(['Suspend! [default]', 'Loading...']);
+    assertLog([
+      'Suspend! [default]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [default]'] : []),
+    ]);
 
     await act(() => resolveText('default'));
     assertLog(['default']);
     expect(container.textContent).toEqual('default');
 
     await act(() => setValue('new value'));
-    assertLog(['Suspend! [new value]', 'Loading...']);
+    assertLog([
+      'Suspend! [new value]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering') ? ['Suspend! [new value]'] : []),
+    ]);
 
     await act(() => resolveText('new value'));
     assertLog(['new value']);
@@ -630,7 +687,7 @@ describe('ReactSuspense', () => {
       return (
         <Suspense fallback={<Text text="Loading..." />}>
           <TextWithLayout text="Child 1" />
-          {show && <AsyncText ms={1000} text="Child 2" />}
+          {show && <AsyncText text="Child 2" />}
         </Suspense>
       );
     }
@@ -651,6 +708,10 @@ describe('ReactSuspense', () => {
       'Suspend! [Child 2]',
       'Loading...',
       'destroy layout',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Child 1', 'Suspend! [Child 2]']
+        : []),
     ]);
 
     await act(() => resolveText('Child 2'));
@@ -673,7 +734,14 @@ describe('ReactSuspense', () => {
       root.render(<App />);
     });
 
-    assertLog(['Suspend! [Child 1]', 'Loading...']);
+    assertLog([
+      'Suspend! [Child 1]',
+      'Loading...',
+
+      ...(gate('enableSiblingPrerendering')
+        ? ['Suspend! [Child 1]', 'Suspend! [Child 2]']
+        : []),
+    ]);
     await resolveText('Child 1');
     await waitForAll(['Child 1', 'Suspend! [Child 2]']);
 
@@ -685,6 +753,7 @@ describe('ReactSuspense', () => {
   });
 
   describe('outside concurrent mode (legacy)', () => {
+    // @gate !disableLegacyMode
     it('a mounted class component can suspend without losing state', async () => {
       class TextWithLifecycle extends React.Component {
         componentDidMount() {
@@ -724,7 +793,7 @@ describe('ReactSuspense', () => {
         return (
           <Suspense fallback={<TextWithLifecycle text="Loading..." />}>
             <TextWithLifecycle text="A" />
-            <AsyncTextWithLifecycle ms={100} text="B" ref={instance} />
+            <AsyncTextWithLifecycle text="B" ref={instance} />
             <TextWithLifecycle text="C" />
           </Suspense>
         );
@@ -763,6 +832,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('AB:2C');
     });
 
+    // @gate !disableLegacyMode
     it('bails out on timed-out primary children even if they receive an update', async () => {
       let instance;
       class Stateful extends React.Component {
@@ -777,7 +847,7 @@ describe('ReactSuspense', () => {
         return (
           <Suspense fallback={<Text text="Loading..." />}>
             <Stateful />
-            <AsyncText ms={1000} text={props.text} />
+            <AsyncText text={props.text} />
           </Suspense>
         );
       }
@@ -803,6 +873,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('Stateful: 2B');
     });
 
+    // @gate !disableLegacyMode
     it('when updating a timed-out tree, always retries the suspended component', async () => {
       let instance;
       class Stateful extends React.Component {
@@ -822,7 +893,7 @@ describe('ReactSuspense', () => {
             <Indirection>
               <Indirection>
                 <Indirection>
-                  <AsyncText ms={1000} text={props.text} />
+                  <AsyncText text={props.text} />
                 </Indirection>
               </Indirection>
             </Indirection>
@@ -858,6 +929,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('Stateful: 2B');
     });
 
+    // @gate !disableLegacyMode
     it('suspends in a class that has componentWillUnmount and is then deleted', async () => {
       class AsyncTextWithUnmount extends React.Component {
         componentWillUnmount() {
@@ -871,7 +943,7 @@ describe('ReactSuspense', () => {
       function App({text}) {
         return (
           <Suspense fallback={<Text text="Loading..." />}>
-            <AsyncTextWithUnmount text={text} ms={100} />
+            <AsyncTextWithUnmount text={text} />
           </Suspense>
         );
       }
@@ -884,6 +956,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('B');
     });
 
+    // @gate !disableLegacyMode
     it('suspends in a component that also contains useEffect', async () => {
       const {useLayoutEffect} = React;
 
@@ -900,7 +973,7 @@ describe('ReactSuspense', () => {
       function App({text}) {
         return (
           <Suspense fallback={<Text text="Loading..." />}>
-            <AsyncTextWithEffect text={text} ms={100} />
+            <AsyncTextWithEffect text={text} />
           </Suspense>
         );
       }
@@ -911,13 +984,14 @@ describe('ReactSuspense', () => {
       assertLog(['A', 'Did commit: A']);
     });
 
+    // @gate !disableLegacyMode
     it('retries when an update is scheduled on a timed out tree', async () => {
       let instance;
       class Stateful extends React.Component {
         state = {step: 1};
         render() {
           instance = this;
-          return <AsyncText ms={1000} text={`Step: ${this.state.step}`} />;
+          return <AsyncText text={`Step: ${this.state.step}`} />;
         }
       }
 
@@ -958,6 +1032,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('Step: 3');
     });
 
+    // @gate !disableLegacyMode
     it('does not remount the fallback while suspended children resolve in legacy mode', async () => {
       let mounts = 0;
       class ShouldMountOnce extends React.Component {
@@ -972,9 +1047,9 @@ describe('ReactSuspense', () => {
       function App(props) {
         return (
           <Suspense fallback={<ShouldMountOnce />}>
-            <AsyncText ms={1000} text="Child 1" />
-            <AsyncText ms={2000} text="Child 2" />
-            <AsyncText ms={3000} text="Child 3" />
+            <AsyncText text="Child 1" />
+            <AsyncText text="Child 2" />
+            <AsyncText text="Child 3" />
           </Suspense>
         );
       }
@@ -1004,6 +1079,7 @@ describe('ReactSuspense', () => {
       expect(mounts).toBe(1);
     });
 
+    // @gate !disableLegacyMode
     it('reuses effects, including deletions, from the suspended tree', async () => {
       const {useState} = React;
 
@@ -1014,7 +1090,7 @@ describe('ReactSuspense', () => {
 
         return (
           <Suspense fallback={<Text text="Loading..." />}>
-            <AsyncText key={tab} text={'Tab: ' + tab} ms={1000} />
+            <AsyncText key={tab} text={'Tab: ' + tab} />
             <Text key={tab + 'sibling'} text=" + sibling" />
           </Suspense>
         );
@@ -1045,6 +1121,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('Tab: 2 + sibling');
     });
 
+    // @gate !disableLegacyMode
     it('does not warn if a mounted component is pinged', async () => {
       const {useState} = React;
 
@@ -1076,13 +1153,14 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('Loading...');
     });
 
+    // @gate !disableLegacyMode
     it('memoizes promise listeners per thread ID to prevent redundant renders', async () => {
       function App() {
         return (
           <Suspense fallback={<Text text="Loading..." />}>
-            <AsyncText text="A" ms={1000} />
-            <AsyncText text="B" ms={2000} />
-            <AsyncText text="C" ms={3000} />
+            <AsyncText text="A" />
+            <AsyncText text="B" />
+            <AsyncText text="C" />
           </Suspense>
         );
       }
@@ -1118,6 +1196,7 @@ describe('ReactSuspense', () => {
       ]);
     });
 
+    // @gate !disableLegacyMode
     it('#14162', async () => {
       const {lazy} = React;
 
@@ -1155,6 +1234,7 @@ describe('ReactSuspense', () => {
       ReactDOM.render(<App name="world" />, container);
     });
 
+    // @gate !disableLegacyMode
     it('updates memoized child of suspense component when context updates (simple memo)', async () => {
       const {useContext, createContext, useState, memo} = React;
 
@@ -1194,6 +1274,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('new value');
     });
 
+    // @gate !disableLegacyMode
     it('updates memoized child of suspense component when context updates (manual memo)', async () => {
       const {useContext, createContext, useState, memo} = React;
 
@@ -1238,6 +1319,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('new value');
     });
 
+    // @gate !disableLegacyMode
     it('updates memoized child of suspense component when context updates (function)', async () => {
       const {useContext, createContext, useState} = React;
 
@@ -1282,6 +1364,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('new value');
     });
 
+    // @gate !disableLegacyMode
     it('updates memoized child of suspense component when context updates (forwardRef)', async () => {
       const {forwardRef, useContext, createContext, useState} = React;
 
@@ -1321,6 +1404,7 @@ describe('ReactSuspense', () => {
       expect(container.textContent).toEqual('new value');
     });
 
+    // @gate !disableLegacyMode
     it('updates context consumer within child of suspended suspense component when context updates', async () => {
       const {createContext, useState} = React;
 

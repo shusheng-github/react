@@ -11,9 +11,12 @@
 
 let React;
 let ReactDOM;
+let findDOMNode;
 let ReactDOMClient;
 let PropTypes;
+
 let act;
+let assertConsoleErrorDev;
 
 describe('ReactLegacyCompositeComponent', () => {
   beforeEach(() => {
@@ -21,10 +24,14 @@ describe('ReactLegacyCompositeComponent', () => {
     React = require('react');
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
+    findDOMNode =
+      ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE
+        .findDOMNode;
     PropTypes = require('prop-types');
-    act = require('internal-test-utils').act;
+    ({act, assertConsoleErrorDev} = require('internal-test-utils'));
   });
 
+  // @gate !disableLegacyMode
   it('should warn about `setState` in render in legacy mode', () => {
     const container = document.createElement('div');
 
@@ -43,15 +50,12 @@ describe('ReactLegacyCompositeComponent', () => {
         return <div />;
       }
     }
-
-    let instance;
-
-    expect(() => {
-      instance = ReactDOM.render(<Component />, container);
-    }).toErrorDev(
+    const instance = ReactDOM.render(<Component />, container);
+    assertConsoleErrorDev([
       'Cannot update during an existing state transition (such as within ' +
-        '`render`). Render methods should be a pure function of props and state.',
-    );
+        '`render`). Render methods should be a pure function of props and state.\n' +
+        '    in Component (at **)',
+    ]);
 
     // The setState call is queued and then executed as a second pass. This
     // behavior is undefined though so we're free to change it to suit the
@@ -114,7 +118,19 @@ describe('ReactLegacyCompositeComponent', () => {
     await act(() => {
       root.render(<Parent ref={current => (component = current)} />);
     });
-    expect(ReactDOM.findDOMNode(component).innerHTML).toBe('bar');
+    assertConsoleErrorDev([
+      'Child uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Child (at **)\n') +
+        '    in Parent (at **)',
+      'Grandchild uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks')
+          ? ''
+          : '    in Grandchild (at **)\n' + '    in Child (at **)\n') +
+        '    in Parent (at **)',
+    ]);
+    expect(findDOMNode(component).innerHTML).toBe('bar');
   });
 
   // @gate !disableLegacyContext
@@ -178,6 +194,18 @@ describe('ReactLegacyCompositeComponent', () => {
     expect(parentInstance.state.flag).toBe(false);
     expect(childInstance.context).toEqual({foo: 'bar', flag: false});
 
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+      'Child uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Child (at **)' +
+        (gate('enableOwnerStacks')
+          ? ''
+          : '\n    in Middle (at **)' + '\n    in Parent (at **)'),
+    ]);
+
     await act(() => {
       parentInstance.setState({flag: true});
     });
@@ -236,6 +264,21 @@ describe('ReactLegacyCompositeComponent', () => {
     await act(() => {
       root.render(<Wrapper ref={current => (wrapper = current)} />);
     });
+
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Parent (at **)\n') +
+        '    in Wrapper (at **)',
+      'Child uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks')
+          ? ''
+          : '    in Child (at **)\n' +
+            '    in div (at **)\n' +
+            '    in Parent (at **)\n') +
+        '    in Wrapper (at **)',
+    ]);
 
     expect(wrapper.parentRef.current.state.flag).toEqual(true);
     expect(wrapper.childRef.current.context).toEqual({flag: true});
@@ -312,6 +355,25 @@ describe('ReactLegacyCompositeComponent', () => {
       root.render(<Parent />);
     });
 
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+      'Child uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Child (at **)\n') +
+        '    in Parent (at **)',
+      'Child uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Child (at **)\n') +
+        '    in Parent (at **)',
+      'Grandchild uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Grandchild (at **)\n') +
+        '    in Child (at **)\n' +
+        '    in Parent (at **)',
+    ]);
+
     expect(childInstance.context).toEqual({foo: 'bar', depth: 0});
     expect(grandchildInstance.context).toEqual({foo: 'bar', depth: 1});
   });
@@ -364,6 +426,11 @@ describe('ReactLegacyCompositeComponent', () => {
     await act(() => {
       root.render(<Parent ref={current => (parentInstance = current)} />);
     });
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+    ]);
 
     expect(childInstance).toBeNull();
 
@@ -371,12 +438,20 @@ describe('ReactLegacyCompositeComponent', () => {
     await act(() => {
       parentInstance.setState({flag: true});
     });
+    assertConsoleErrorDev([
+      'Child uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        (gate('enableOwnerStacks') ? '' : '    in Child (at **)\n') +
+        '    in Parent (at **)',
+    ]);
+
     expect(parentInstance.state.flag).toBe(true);
 
     expect(childInstance.context).toEqual({foo: 'bar', depth: 0});
   });
 
   // @gate !disableLegacyContext
+  // @gate !disableLegacyMode
   it('unmasked context propagates through updates', () => {
     class Leaf extends React.Component {
       static contextTypes = {
@@ -430,6 +505,15 @@ describe('ReactLegacyCompositeComponent', () => {
 
     const div = document.createElement('div');
     ReactDOM.render(<Parent cntxt="noise" />, div);
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+      'Leaf uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Intermediary (at **)\n' +
+        '    in Parent (at **)',
+    ]);
     expect(div.children[0].innerHTML).toBe('noise');
     div.children[0].innerHTML = 'aliens';
     div.children[0].id = 'aliens';
@@ -441,6 +525,7 @@ describe('ReactLegacyCompositeComponent', () => {
   });
 
   // @gate !disableLegacyContext
+  // @gate !disableLegacyMode
   it('should trigger componentWillReceiveProps for context changes', () => {
     let contextChanges = 0;
     let propChanges = 0;
@@ -544,6 +629,17 @@ describe('ReactLegacyCompositeComponent', () => {
       </Parent>,
       div,
     );
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+      'GrandChild uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        '    in GrandChild (at **)',
+      'ChildWithContext uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        '    in ChildWithContext (at **)',
+    ]);
 
     parentInstance.setState({
       foo: 'def',
@@ -553,6 +649,7 @@ describe('ReactLegacyCompositeComponent', () => {
     expect(contextChanges).toBe(3); // ChildWithContext, GrandChild x 2
   });
 
+  // @gate !disableLegacyMode
   it('only renders once if updated in componentWillReceiveProps in legacy mode', () => {
     let renders = 0;
 
@@ -581,6 +678,7 @@ describe('ReactLegacyCompositeComponent', () => {
     expect(instance.state.updated).toBe(true);
   });
 
+  // @gate !disableLegacyMode
   it('only renders once if updated in componentWillReceiveProps when batching in legacy mode', () => {
     let renders = 0;
 
@@ -611,6 +709,7 @@ describe('ReactLegacyCompositeComponent', () => {
     expect(instance.state.updated).toBe(true);
   });
 
+  // @gate !disableLegacyMode
   it('should update refs if shouldComponentUpdate gives false in legacy mode', () => {
     class Static extends React.Component {
       shouldComponentUpdate() {
@@ -655,28 +754,29 @@ describe('ReactLegacyCompositeComponent', () => {
 
     const container = document.createElement('div');
     const comp = ReactDOM.render(<Component flipped={false} />, container);
-    expect(ReactDOM.findDOMNode(comp.static0Ref.current).textContent).toBe('A');
-    expect(ReactDOM.findDOMNode(comp.static1Ref.current).textContent).toBe('B');
+    expect(findDOMNode(comp.static0Ref.current).textContent).toBe('A');
+    expect(findDOMNode(comp.static1Ref.current).textContent).toBe('B');
 
     // When flipping the order, the refs should update even though the actual
     // contents do not
     ReactDOM.render(<Component flipped={true} />, container);
-    expect(ReactDOM.findDOMNode(comp.static0Ref.current).textContent).toBe('B');
-    expect(ReactDOM.findDOMNode(comp.static1Ref.current).textContent).toBe('A');
+    expect(findDOMNode(comp.static0Ref.current).textContent).toBe('B');
+    expect(findDOMNode(comp.static1Ref.current).textContent).toBe('A');
   });
 
+  // @gate !disableLegacyMode
   it('should allow access to findDOMNode in componentWillUnmount in legacy mode', () => {
     let a = null;
     let b = null;
 
     class Component extends React.Component {
       componentDidMount() {
-        a = ReactDOM.findDOMNode(this);
+        a = findDOMNode(this);
         expect(a).not.toBe(null);
       }
 
       componentWillUnmount() {
-        b = ReactDOM.findDOMNode(this);
+        b = findDOMNode(this);
         expect(b).not.toBe(null);
       }
 
@@ -693,6 +793,7 @@ describe('ReactLegacyCompositeComponent', () => {
   });
 
   // @gate !disableLegacyContext || !__DEV__
+  // @gate !disableLegacyMode
   it('context should be passed down from the parent', () => {
     class Parent extends React.Component {
       static childContextTypes = {
@@ -727,6 +828,14 @@ describe('ReactLegacyCompositeComponent', () => {
       </Parent>,
       div,
     );
+    assertConsoleErrorDev([
+      'Parent uses the legacy childContextTypes API which will soon be removed. ' +
+        'Use React.createContext() instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Parent (at **)',
+      'Component uses the legacy contextTypes API which will soon be removed. ' +
+        'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
+        '    in Component (at **)',
+    ]);
   });
 
   it('should replace state in legacy mode', async () => {
@@ -813,6 +922,7 @@ describe('ReactLegacyCompositeComponent', () => {
     expect(moo.state.amIImmutable).toBe(undefined);
   });
 
+  // @gate !disableLegacyMode
   it('should not warn about unmounting during unmounting in legacy mode', () => {
     const container = document.createElement('div');
     const layer = document.createElement('div');

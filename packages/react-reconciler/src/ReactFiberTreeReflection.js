@@ -11,11 +11,7 @@ import type {Fiber} from './ReactInternalTypes';
 import type {Container, SuspenseInstance} from './ReactFiberConfig';
 import type {SuspenseState} from './ReactFiberSuspenseComponent';
 
-import {get as getInstance} from 'shared/ReactInstanceMap';
-import ReactSharedInternals from 'shared/ReactSharedInternals';
-import getComponentNameFromFiber from 'react-reconciler/src/getComponentNameFromFiber';
 import {
-  ClassComponent,
   HostComponent,
   HostHoistable,
   HostSingleton,
@@ -25,9 +21,6 @@ import {
   SuspenseComponent,
 } from './ReactWorkTags';
 import {NoFlags, Placement, Hydrating} from './ReactFiberFlags';
-import {enableFloat} from 'shared/ReactFeatureFlags';
-
-const ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
 
 export function getNearestMountedFiber(fiber: Fiber): null | Fiber {
   let node = fiber;
@@ -84,37 +77,6 @@ export function getContainerFromFiber(fiber: Fiber): null | Container {
   return fiber.tag === HostRoot
     ? (fiber.stateNode.containerInfo: Container)
     : null;
-}
-
-export function isFiberMounted(fiber: Fiber): boolean {
-  return getNearestMountedFiber(fiber) === fiber;
-}
-
-export function isMounted(component: React$Component<any, any>): boolean {
-  if (__DEV__) {
-    const owner = (ReactCurrentOwner.current: any);
-    if (owner !== null && owner.tag === ClassComponent) {
-      const ownerFiber: Fiber = owner;
-      const instance = ownerFiber.stateNode;
-      if (!instance._warnedAboutRefsInRender) {
-        console.error(
-          '%s is accessing isMounted inside its render() function. ' +
-            'render() should be a pure function of props and state. It should ' +
-            'never access something that requires stale data from the previous ' +
-            'render, such as refs. Move this logic to componentDidMount and ' +
-            'componentDidUpdate instead.',
-          getComponentNameFromFiber(ownerFiber) || 'A component',
-        );
-      }
-      instance._warnedAboutRefsInRender = true;
-    }
-  }
-
-  const fiber: ?Fiber = getInstance(component);
-  if (!fiber) {
-    return false;
-  }
-  return getNearestMountedFiber(fiber) === fiber;
 }
 
 function assertIsMounted(fiber: Fiber) {
@@ -280,7 +242,7 @@ function findCurrentHostFiberImpl(node: Fiber): Fiber | null {
   const tag = node.tag;
   if (
     tag === HostComponent ||
-    (enableFloat ? tag === HostHoistable : false) ||
+    tag === HostHoistable ||
     tag === HostSingleton ||
     tag === HostText
   ) {
@@ -311,7 +273,7 @@ function findCurrentHostFiberWithNoPortalsImpl(node: Fiber): Fiber | null {
   const tag = node.tag;
   if (
     tag === HostComponent ||
-    (enableFloat ? tag === HostHoistable : false) ||
+    tag === HostHoistable ||
     tag === HostSingleton ||
     tag === HostText
   ) {

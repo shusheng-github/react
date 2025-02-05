@@ -12,17 +12,19 @@ import type {
   ReactContext,
   StartTransitionOptions,
   Usable,
+  Awaited,
 } from 'shared/ReactTypes';
 import {REACT_CONSUMER_TYPE} from 'shared/ReactSymbols';
 
-import ReactCurrentDispatcher from './ReactCurrentDispatcher';
-import ReactCurrentCache from './ReactCurrentCache';
+import ReactSharedInternals from 'shared/ReactSharedInternals';
+
+import {enableUseResourceEffectHook} from 'shared/ReactFeatureFlags';
 
 type BasicStateAction<S> = (S => S) | S;
 type Dispatch<A> = A => void;
 
 function resolveDispatcher() {
-  const dispatcher = ReactCurrentDispatcher.current;
+  const dispatcher = ReactSharedInternals.H;
   if (__DEV__) {
     if (dispatcher === null) {
       console.error(
@@ -31,7 +33,7 @@ function resolveDispatcher() {
           '1. You might have mismatching versions of React and the renderer (such as React DOM)\n' +
           '2. You might be breaking the Rules of Hooks\n' +
           '3. You might have more than one copy of React in the same app\n' +
-          'See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.',
+          'See https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.',
       );
     }
   }
@@ -41,28 +43,8 @@ function resolveDispatcher() {
   return ((dispatcher: any): Dispatcher);
 }
 
-export function getCacheSignal(): AbortSignal {
-  const dispatcher = ReactCurrentCache.current;
-  if (!dispatcher) {
-    // If we have no cache to associate with this call, then we don't know
-    // its lifetime. We abort early since that's safer than letting it live
-    // for ever. Unlike just caching which can be a functional noop outside
-    // of React, these should generally always be associated with some React
-    // render but we're not limiting quite as much as making it a Hook.
-    // It's safer than erroring early at runtime.
-    const controller = new AbortController();
-    const reason = new Error(
-      'This CacheSignal was requested outside React which means that it is ' +
-        'immediately aborted.',
-    );
-    controller.abort(reason);
-    return controller.signal;
-  }
-  return dispatcher.getCacheSignal();
-}
-
 export function getCacheForType<T>(resourceType: () => T): T {
-  const dispatcher = ReactCurrentCache.current;
+  const dispatcher = ReactSharedInternals.A;
   if (!dispatcher) {
     // If there is no dispatcher, then we treat this as not being cached.
     return resourceType();
@@ -205,7 +187,7 @@ export function use<T>(usable: Usable<T>): T {
   return dispatcher.use(usable);
 }
 
-export function useMemoCache(size: number): Array<any> {
+export function useMemoCache(size: number): Array<mixed> {
   const dispatcher = resolveDispatcher();
   // $FlowFixMe[not-a-function] This is unstable, thus optional
   return dispatcher.useMemoCache(size);
@@ -219,11 +201,40 @@ export function useEffectEvent<Args, F: (...Array<Args>) => mixed>(
   return dispatcher.useEffectEvent(callback);
 }
 
+export function useResourceEffect(
+  create: () => mixed,
+  createDeps: Array<mixed> | void | null,
+  update: ((resource: mixed) => void) | void,
+  updateDeps: Array<mixed> | void | null,
+  destroy: ((resource: mixed) => void) | void,
+): void {
+  if (!enableUseResourceEffectHook) {
+    throw new Error('Not implemented.');
+  }
+  const dispatcher = resolveDispatcher();
+  // $FlowFixMe[not-a-function] This is unstable, thus optional
+  return dispatcher.useResourceEffect(
+    create,
+    createDeps,
+    update,
+    updateDeps,
+    destroy,
+  );
+}
+
 export function useOptimistic<S, A>(
   passthrough: S,
   reducer: ?(S, A) => S,
 ): [S, (A) => void] {
   const dispatcher = resolveDispatcher();
-  // $FlowFixMe[not-a-function] This is unstable, thus optional
   return dispatcher.useOptimistic(passthrough, reducer);
+}
+
+export function useActionState<S, P>(
+  action: (Awaited<S>, P) => S,
+  initialState: Awaited<S>,
+  permalink?: string,
+): [Awaited<S>, (P) => void, boolean] {
+  const dispatcher = resolveDispatcher();
+  return dispatcher.useActionState(action, initialState, permalink);
 }
