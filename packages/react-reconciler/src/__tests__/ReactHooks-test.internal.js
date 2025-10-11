@@ -1236,24 +1236,20 @@ describe('ReactHooks', () => {
         'In classes, you can read it in the render method or getDerivedStateFromProps. ' +
         'In function components, you can read it directly in the function body, ' +
         'but not inside Hooks like useReducer() or useMemo().\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Do not call Hooks inside useEffect(...), useMemo(...), or other built-in Hooks. ' +
         'You can only call Hooks at the top level of your React function. ' +
         'For more information, see https://react.dev/link/rules-of-hooks\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Context can only be read while React is rendering. ' +
         'In classes, you can read it in the render method or getDerivedStateFromProps. ' +
         'In function components, you can read it directly in the function body, ' +
         'but not inside Hooks like useReducer() or useMemo().\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Do not call Hooks inside useEffect(...), useMemo(...), or other built-in Hooks. ' +
         'You can only call Hooks at the top level of your React function. ' +
         'For more information, see https://react.dev/link/rules-of-hooks\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
     ]);
 
     function Valid() {
@@ -1293,24 +1289,20 @@ describe('ReactHooks', () => {
         'In classes, you can read it in the render method or getDerivedStateFromProps. ' +
         'In function components, you can read it directly in the function body, ' +
         'but not inside Hooks like useReducer() or useMemo().\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Do not call Hooks inside useEffect(...), useMemo(...), or other built-in Hooks. ' +
         'You can only call Hooks at the top level of your React function. ' +
         'For more information, see https://react.dev/link/rules-of-hooks\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Context can only be read while React is rendering. ' +
         'In classes, you can read it in the render method or getDerivedStateFromProps. ' +
         'In function components, you can read it directly in the function body, ' +
         'but not inside Hooks like useReducer() or useMemo().\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
       'Do not call Hooks inside useEffect(...), useMemo(...), or other built-in Hooks. ' +
         'You can only call Hooks at the top level of your React function. ' +
         'For more information, see https://react.dev/link/rules-of-hooks\n' +
-        '    in App (at **)' +
-        (gate('enableOwnerStacks') ? '' : '\n    in Boundary (at **)'),
+        '    in App (at **)',
     ]);
   });
 
@@ -1597,17 +1589,15 @@ describe('ReactHooks', () => {
       useStateHelper,
     ];
 
-    if (__EXPERIMENTAL__) {
-      const useTransitionHelper = () => React.useTransition();
-      const useDeferredValueHelper = () =>
-        React.useDeferredValue(0, {timeoutMs: 1000});
+    const useTransitionHelper = () => React.useTransition();
+    const useDeferredValueHelper = () =>
+      React.useDeferredValue(0, {timeoutMs: 1000});
 
-      orderedHooks.push(useTransitionHelper);
-      orderedHooks.push(useDeferredValueHelper);
+    orderedHooks.push(useTransitionHelper);
+    orderedHooks.push(useDeferredValueHelper);
 
-      hooksInList.push(useTransitionHelper);
-      hooksInList.push(useDeferredValueHelper);
-    }
+    hooksInList.push(useTransitionHelper);
+    hooksInList.push(useDeferredValueHelper);
 
     const formatHookNamesToMatchErrorMessage = (hookNameA, hookNameB) => {
       return `use${hookNameA}${' '.repeat(24 - hookNameA.length)}${

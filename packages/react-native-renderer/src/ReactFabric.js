@@ -46,7 +46,10 @@ import {
   createPublicRootInstance,
   type PublicRootInstance,
 } from 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface';
-import {disableLegacyMode} from 'shared/ReactFeatureFlags';
+import {
+  disableLegacyMode,
+  enableDefaultTransitionIndicator,
+} from 'shared/ReactFeatureFlags';
 
 if (typeof ReactFiberErrorDialog.showErrorDialog !== 'function') {
   throw new Error(
@@ -78,7 +81,7 @@ function nativeOnCaughtError(
   error: mixed,
   errorInfo: {
     +componentStack?: ?string,
-    +errorBoundary?: ?React$Component<any, any>,
+    +errorBoundary?: ?component(...props: any),
   },
 ): void {
   const errorBoundary = errorInfo.errorBoundary;
@@ -97,6 +100,9 @@ function nativeOnCaughtError(
   }
 
   defaultOnCaughtError(error, errorInfo);
+}
+function nativeOnDefaultTransitionIndicator(): void | (() => void) {
+  // Native doesn't have a default indicator.
 }
 
 function render(
@@ -129,6 +135,12 @@ function render(
     if (options && options.onRecoverableError !== undefined) {
       onRecoverableError = options.onRecoverableError;
     }
+    let onDefaultTransitionIndicator = nativeOnDefaultTransitionIndicator;
+    if (enableDefaultTransitionIndicator) {
+      if (options && options.onDefaultTransitionIndicator !== undefined) {
+        onDefaultTransitionIndicator = options.onDefaultTransitionIndicator;
+      }
+    }
 
     const publicRootInstance = createPublicRootInstance(containerTag);
     const rootInstance = {
@@ -148,6 +160,7 @@ function render(
       onUncaughtError,
       onCaughtError,
       onRecoverableError,
+      onDefaultTransitionIndicator,
       null,
     );
 

@@ -3,7 +3,7 @@
 
 ```javascript
 // @inferEffectDependencies
-import {useEffect, useRef} from 'react';
+import {useEffect, useRef, AUTODEPS} from 'react';
 import useEffectWrapper from 'useEffectWrapper';
 
 const moduleNonReactive = 0;
@@ -24,7 +24,7 @@ function Component({foo, bar}) {
     console.log(ref.current);
     console.log(localNonPrimitiveReactive);
     console.log(localNonPrimitiveNonreactive);
-  });
+  }, AUTODEPS);
 
   // Optional chains and property accesses
   // TODO: we may be able to save bytes by omitting property accesses if the
@@ -32,18 +32,11 @@ function Component({foo, bar}) {
   useEffect(() => {
     console.log(bar?.baz);
     console.log(bar.qux);
-  });
-
-  function f() {
-    console.log(foo);
-  }
-
-  // No inferred dep array, the argument is not a lambda
-  useEffect(f);
+  }, AUTODEPS);
 
   useEffectWrapper(() => {
     console.log(foo);
-  });
+  }, AUTODEPS);
 }
 
 ```
@@ -52,13 +45,13 @@ function Component({foo, bar}) {
 
 ```javascript
 import { c as _c } from "react/compiler-runtime"; // @inferEffectDependencies
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, AUTODEPS } from "react";
 import useEffectWrapper from "useEffectWrapper";
 
 const moduleNonReactive = 0;
 
 function Component(t0) {
-  const $ = _c(14);
+  const $ = _c(12);
   const { foo, bar } = t0;
 
   const ref = useRef(0);
@@ -101,7 +94,6 @@ function Component(t0) {
   useEffect(t3, [
     foo,
     bar,
-    ref,
     localNonPrimitiveReactive,
     localNonPrimitiveNonreactive,
   ]);
@@ -120,7 +112,7 @@ function Component(t0) {
   useEffect(t4, [bar.baz, bar.qux]);
   let t5;
   if ($[10] !== foo) {
-    t5 = function f() {
+    t5 = () => {
       console.log(foo);
     };
     $[10] = foo;
@@ -128,20 +120,7 @@ function Component(t0) {
   } else {
     t5 = $[11];
   }
-  const f = t5;
-
-  useEffect(f);
-  let t6;
-  if ($[12] !== foo) {
-    t6 = () => {
-      console.log(foo);
-    };
-    $[12] = foo;
-    $[13] = t6;
-  } else {
-    t6 = $[13];
-  }
-  useEffectWrapper(t6, [foo]);
+  useEffectWrapper(t5, [foo]);
 }
 
 ```

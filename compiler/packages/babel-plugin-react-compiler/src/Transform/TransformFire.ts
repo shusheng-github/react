@@ -5,12 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {
-  CompilerError,
-  CompilerErrorDetailOptions,
-  ErrorSeverity,
-  SourceLocation,
-} from '..';
+import {CompilerError, CompilerErrorDetailOptions, SourceLocation} from '..';
 import {
   ArrayExpression,
   CallExpression,
@@ -28,14 +23,21 @@ import {
   isUseEffectHookType,
   LoadLocal,
   makeInstructionId,
+  NonLocalImportSpecifier,
   Place,
   promoteTemporary,
 } from '../HIR';
 import {createTemporaryPlace, markInstructionIds} from '../HIR/HIRBuilder';
 import {getOrInsertWith} from '../Utils/utils';
-import {BuiltInFireId, DefaultNonmutatingHook} from '../HIR/ObjectShape';
+import {
+  BuiltInFireFunctionId,
+  BuiltInFireId,
+  DefaultNonmutatingHook,
+} from '../HIR/ObjectShape';
 import {eachInstructionOperand} from '../HIR/visitors';
 import {printSourceLocationLine} from '../HIR/PrintHIR';
+import {USE_FIRE_FUNCTION_NAME} from '../HIR/Environment';
+import {ErrorCategory} from '../CompilerError';
 
 /*
  * TODO(jmbrown):
@@ -56,6 +58,7 @@ export function transformFire(fn: HIRFunction): void {
 }
 
 function replaceFireFunctions(fn: HIRFunction, context: Context): void {
+  let importedUseFire: NonLocalImportSpecifier | null = null;
   let hasRewrite = false;
   for (const [, block] of fn.body.blocks) {
     const rewriteInstrs = new Map<InstructionId, Array<Instruction>>();
@@ -87,7 +90,15 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
           ] of capturedCallees.entries()) {
             if (!context.hasCalleeWithInsertedFire(fireCalleePlace)) {
               context.addCalleeWithInsertedFire(fireCalleePlace);
-              const loadUseFireInstr = makeLoadUseFireInstruction(fn.env);
+
+              importedUseFire ??= fn.env.programContext.addImportSpecifier({
+                source: fn.env.programContext.reactRuntimeModule,
+                importSpecifierName: USE_FIRE_FUNCTION_NAME,
+              });
+              const loadUseFireInstr = makeLoadUseFireInstruction(
+                fn.env,
+                importedUseFire,
+              );
               const loadFireCalleeInstr = makeLoadFireCalleeInstruction(
                 fn.env,
                 fireCalleeInfo.capturedCalleeIdentifier,
@@ -117,7 +128,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
                 context.pushError({
                   loc: value.loc,
                   description: null,
-                  severity: ErrorSeverity.Invariant,
+                  category: ErrorCategory.Invariant,
                   reason: '[InsertFire] No LoadGlobal found for useEffect call',
                   suggestions: null,
                 });
@@ -163,7 +174,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
                 loc: value.args[1].loc,
                 description:
                   'You must use an array literal for an effect dependency array when that effect uses `fire()`',
-                severity: ErrorSeverity.Invariant,
+                category: ErrorCategory.Fire,
                 reason: CANNOT_COMPILE_FIRE,
                 suggestions: null,
               });
@@ -173,7 +184,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
               loc: value.args[1].place.loc,
               description:
                 'You must use an array literal for an effect dependency array when that effect uses `fire()`',
-              severity: ErrorSeverity.Invariant,
+              category: ErrorCategory.Fire,
               reason: CANNOT_COMPILE_FIRE,
               suggestions: null,
             });
@@ -207,7 +218,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
               context.pushError({
                 loc: value.loc,
                 description: null,
-                severity: ErrorSeverity.Invariant,
+                category: ErrorCategory.Invariant,
                 reason:
                   '[InsertFire] No loadLocal found for fire call argument',
                 suggestions: null,
@@ -230,7 +241,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
               loc: value.loc,
               description:
                 '`fire()` can only receive a function call such as `fire(fn(a,b)). Method calls and other expressions are not allowed',
-              severity: ErrorSeverity.InvalidReact,
+              category: ErrorCategory.Fire,
               reason: CANNOT_COMPILE_FIRE,
               suggestions: null,
             });
@@ -248,7 +259,7 @@ function replaceFireFunctions(fn: HIRFunction, context: Context): void {
           context.pushError({
             loc: value.loc,
             description,
-            severity: ErrorSeverity.InvalidReact,
+            category: ErrorCategory.Fire,
             reason: CANNOT_COMPILE_FIRE,
             suggestions: null,
           });
@@ -319,51 +330,6 @@ function visitFunctionExpressionAndPropagateFireDependencies(
     replaceFireFunctions(fnExpr.loweredFunc.func, context),
   );
 
-  /*
-   * Make a mapping from each dependency to the corresponding LoadLocal for it so that
-   * we can replace the loaded place with the generated fire function binding
-   */
-  const loadLocalsToDepLoads = new Map<IdentifierId, LoadLocal>();
-  for (const dep of fnExpr.loweredFunc.dependencies) {
-    const loadLocal = context.getLoadLocalInstr(dep.identifier.id);
-    if (loadLocal != null) {
-      loadLocalsToDepLoads.set(loadLocal.place.identifier.id, loadLocal);
-    }
-  }
-
-  const replacedCallees = new Map<IdentifierId, Place>();
-  for (const [
-    calleeIdentifierId,
-    loadedFireFunctionBindingPlace,
-  ] of calleesCapturedByFnExpression.entries()) {
-    /*
-     * Given the ids of captured fire callees, look at the deps for loads of those identifiers
-     * and replace them with the new fire function binding
-     */
-    const loadLocal = loadLocalsToDepLoads.get(calleeIdentifierId);
-    if (loadLocal == null) {
-      context.pushError({
-        loc: fnExpr.loc,
-        description: null,
-        severity: ErrorSeverity.Invariant,
-        reason:
-          '[InsertFire] No loadLocal found for fire call argument for lambda',
-        suggestions: null,
-      });
-      continue;
-    }
-
-    const oldPlaceId = loadLocal.place.identifier.id;
-    loadLocal.place = {
-      ...loadedFireFunctionBindingPlace.fireFunctionBinding,
-    };
-
-    replacedCallees.set(
-      oldPlaceId,
-      loadedFireFunctionBindingPlace.fireFunctionBinding,
-    );
-  }
-
   // For each replaced callee, update the context of the function expression to track it
   for (
     let contextIdx = 0;
@@ -371,9 +337,13 @@ function visitFunctionExpressionAndPropagateFireDependencies(
     contextIdx++
   ) {
     const contextItem = fnExpr.loweredFunc.func.context[contextIdx];
-    const replacedCallee = replacedCallees.get(contextItem.identifier.id);
+    const replacedCallee = calleesCapturedByFnExpression.get(
+      contextItem.identifier.id,
+    );
     if (replacedCallee != null) {
-      fnExpr.loweredFunc.func.context[contextIdx] = replacedCallee;
+      fnExpr.loweredFunc.func.context[contextIdx] = {
+        ...replacedCallee.fireFunctionBinding,
+      };
     }
   }
 
@@ -420,7 +390,7 @@ function ensureNoRemainingCalleeCaptures(
         description: `All uses of ${calleeName} must be either used with a fire() call in \
 this effect or not used with a fire() call at all. ${calleeName} was used with fire() on line \
 ${printSourceLocationLine(calleeInfo.fireLoc)} in this effect`,
-        severity: ErrorSeverity.InvalidReact,
+        category: ErrorCategory.Fire,
         reason: CANNOT_COMPILE_FIRE,
         suggestions: null,
       });
@@ -437,7 +407,7 @@ function ensureNoMoreFireUses(fn: HIRFunction, context: Context): void {
       context.pushError({
         loc: place.identifier.loc,
         description: 'Cannot use `fire` outside of a useEffect function',
-        severity: ErrorSeverity.Invariant,
+        category: ErrorCategory.Fire,
         reason: CANNOT_COMPILE_FIRE,
         suggestions: null,
       });
@@ -445,18 +415,16 @@ function ensureNoMoreFireUses(fn: HIRFunction, context: Context): void {
   }
 }
 
-function makeLoadUseFireInstruction(env: Environment): Instruction {
+function makeLoadUseFireInstruction(
+  env: Environment,
+  importedLoadUseFire: NonLocalImportSpecifier,
+): Instruction {
   const useFirePlace = createTemporaryPlace(env, GeneratedSource);
   useFirePlace.effect = Effect.Read;
   useFirePlace.identifier.type = DefaultNonmutatingHook;
   const instrValue: InstructionValue = {
     kind: 'LoadGlobal',
-    binding: {
-      kind: 'ImportSpecifier',
-      name: 'useFire',
-      module: 'react',
-      imported: 'useFire',
-    },
+    binding: {...importedLoadUseFire},
     loc: GeneratedSource,
   };
   return {
@@ -464,6 +432,7 @@ function makeLoadUseFireInstruction(env: Environment): Instruction {
     value: instrValue,
     lvalue: {...useFirePlace},
     loc: GeneratedSource,
+    effects: null,
   };
 }
 
@@ -488,6 +457,7 @@ function makeLoadFireCalleeInstruction(
     },
     lvalue: {...loadedFireCallee},
     loc: GeneratedSource,
+    effects: null,
   };
 }
 
@@ -511,6 +481,7 @@ function makeCallUseFireInstruction(
     value: useFireCall,
     lvalue: {...useFireCallResultPlace},
     loc: GeneratedSource,
+    effects: null,
   };
 }
 
@@ -539,6 +510,7 @@ function makeStoreUseFireInstruction(
     },
     lvalue: fireFunctionBindingLValuePlace,
     loc: GeneratedSource,
+    effects: null,
   };
 }
 
@@ -665,6 +637,13 @@ class Context {
       () => createTemporaryPlace(this.#env, GeneratedSource),
     );
 
+    fireFunctionBinding.identifier.type = {
+      kind: 'Function',
+      shapeId: BuiltInFireFunctionId,
+      return: {kind: 'Poly'},
+      isConstructor: false,
+    };
+
     this.#capturedCalleeIdentifierIds.set(callee.identifier.id, {
       fireFunctionBinding,
       capturedCalleeIdentifier: callee.identifier,
@@ -719,7 +698,7 @@ class Context {
   }
 
   hasErrors(): boolean {
-    return this.#errors.hasErrors();
+    return this.#errors.hasAnyErrors();
   }
 
   throwIfErrorsFound(): void {

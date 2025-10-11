@@ -113,7 +113,7 @@ describe('ReactDOMServerPartialHydration', () => {
     act = require('internal-test-utils').act;
     ReactDOMServer = require('react-dom/server');
     Scheduler = require('scheduler');
-    Activity = React.unstable_Activity;
+    Activity = React.Activity;
     Suspense = React.Suspense;
     useSyncExternalStore = React.useSyncExternalStore;
     if (gate(flags => flags.enableSuspenseList)) {
@@ -1922,12 +1922,7 @@ describe('ReactDOMServerPartialHydration', () => {
       assertConsoleErrorDev([
         "Can't perform a React state update on a component that hasn't mounted yet. " +
           'This indicates that you have a side-effect in your render function that ' +
-          'asynchronously later calls tries to update the component. Move this work to useEffect instead.\n' +
-          (gate('enableOwnerStacks')
-            ? ''
-            : '    in Child (at **)\n' +
-              '    in Suspense (at **)\n' +
-              '    in div (at **)\n') +
+          'asynchronously tries to update the component. Move this work to useEffect instead.\n' +
           '    in App (at **)',
       ]);
 
@@ -2367,7 +2362,7 @@ describe('ReactDOMServerPartialHydration', () => {
 
     function App({showMore}) {
       return (
-        <SuspenseList revealOrder="forwards">
+        <SuspenseList revealOrder="forwards" tail="visible">
           {a}
           {b}
           {showMore ? (
@@ -3674,7 +3669,7 @@ describe('ReactDOMServerPartialHydration', () => {
   });
 
   // @gate enableActivity
-  it('a visible Activity component acts like a fragment', async () => {
+  it('a visible Activity component is surrounded by comment markers', async () => {
     const ref = React.createRef();
 
     function App() {
@@ -3695,9 +3690,11 @@ describe('ReactDOMServerPartialHydration', () => {
     // pure indirection.
     expect(container).toMatchInlineSnapshot(`
       <div>
+        <!--&-->
         <span>
           Child
         </span>
+        <!--/&-->
       </div>
     `);
 
@@ -3726,6 +3723,11 @@ describe('ReactDOMServerPartialHydration', () => {
           <Activity mode="hidden">
             <HiddenChild />
           </Activity>
+          <Suspense fallback={null}>
+            <Activity mode="hidden">
+              <HiddenChild />
+            </Activity>
+          </Suspense>
         </>
       );
     }
@@ -3744,6 +3746,8 @@ describe('ReactDOMServerPartialHydration', () => {
         <span>
           Visible
         </span>
+        <!--$-->
+        <!--/$-->
       </div>
     `);
 
@@ -3758,12 +3762,39 @@ describe('ReactDOMServerPartialHydration', () => {
       // Passive effects.
       await waitForPaint([]);
     }
+
     // Subsequently, the hidden child is prerendered on the client
+    // along with hydrating the Suspense boundary outside the Activity.
     await waitForPaint(['HiddenChild']);
     expect(container).toMatchInlineSnapshot(`
       <div>
         <span>
           Visible
+        </span>
+        <!--$-->
+        <!--/$-->
+        <span
+          style="display: none;"
+        >
+          Hidden
+        </span>
+      </div>
+    `);
+
+    // Next the child inside the Activity is hydrated.
+    await waitForPaint(['HiddenChild']);
+
+    expect(container).toMatchInlineSnapshot(`
+      <div>
+        <span>
+          Visible
+        </span>
+        <!--$-->
+        <!--/$-->
+        <span
+          style="display: none;"
+        >
+          Hidden
         </span>
         <span
           style="display: none;"
@@ -3882,7 +3913,6 @@ describe('ReactDOMServerPartialHydration', () => {
     );
   });
 
-  // @gate favorSafetyOverHydrationPerf
   it("falls back to client rendering when there's a text mismatch (direct text child)", async () => {
     function DirectTextChild({text}) {
       return <div>{text}</div>;
@@ -3902,11 +3932,10 @@ describe('ReactDOMServerPartialHydration', () => {
       });
     });
     assertLog([
-      "onRecoverableError: Hydration failed because the server rendered HTML didn't match the client.",
+      "onRecoverableError: Hydration failed because the server rendered text didn't match the client.",
     ]);
   });
 
-  // @gate favorSafetyOverHydrationPerf
   it("falls back to client rendering when there's a text mismatch (text child with siblings)", async () => {
     function Sibling() {
       return 'Sibling';
@@ -3941,7 +3970,97 @@ describe('ReactDOMServerPartialHydration', () => {
       );
     });
     assertLog([
-      "onRecoverableError: Hydration failed because the server rendered HTML didn't match the client.",
+      "onRecoverableError: Hydration failed because the server rendered text didn't match the client.",
     ]);
+  });
+
+  it('hides a dehydrated suspense boundary if the parent resuspends', async () => {
+    let suspend = false;
+    let resolve;
+    const promise = new Promise(resolvePromise => (resolve = resolvePromise));
+    const ref = React.createRef();
+
+    function Child({text}) {
+      if (suspend) {
+        throw promise;
+      } else {
+        return text;
+      }
+    }
+
+    function Sibling({resuspend}) {
+      if (suspend && resuspend) {
+        throw promise;
+      } else {
+        return null;
+      }
+    }
+
+    function Component({text}) {
+      return (
+        <Suspense>
+          <Child text={text} />
+          <span ref={ref}>World</span>
+        </Suspense>
+      );
+    }
+
+    function App({text, resuspend}) {
+      const memoized = React.useMemo(() => <Component text={text} />, [text]);
+      return (
+        <div>
+          <Suspense fallback="Loading...">
+            {memoized}
+            <Sibling resuspend={resuspend} />
+          </Suspense>
+        </div>
+      );
+    }
+
+    suspend = false;
+    const finalHTML = ReactDOMServer.renderToString(<App text="Hello" />);
+    const container = document.createElement('div');
+    container.innerHTML = finalHTML;
+
+    // On the client we don't have all data yet but we want to start
+    // hydrating anyway.
+    suspend = true;
+    const root = ReactDOMClient.hydrateRoot(container, <App text="Hello" />, {
+      onRecoverableError(error) {
+        Scheduler.log('onRecoverableError: ' + normalizeError(error.message));
+        if (error.cause) {
+          Scheduler.log('Cause: ' + normalizeError(error.cause.message));
+        }
+      },
+    });
+    await waitForAll([]);
+
+    expect(ref.current).toBe(null); // Still dehydrated
+    const span = container.getElementsByTagName('span')[0];
+    const textNode = span.previousSibling;
+    expect(textNode.nodeValue).toBe('Hello');
+    expect(span.textContent).toBe('World');
+
+    // Render an update, that resuspends the parent boundary.
+    // Flushing now now hide the text content.
+    await act(() => {
+      root.render(<App text="Hello" resuspend={true} />);
+    });
+
+    expect(ref.current).toBe(null);
+    expect(span.style.display).toBe('none');
+    expect(textNode.nodeValue).toBe('');
+
+    // Unsuspending shows the content.
+    await act(async () => {
+      suspend = false;
+      resolve();
+      await promise;
+    });
+
+    expect(textNode.nodeValue).toBe('Hello');
+    expect(span.textContent).toBe('World');
+    expect(span.style.display).toBe('');
+    expect(ref.current).toBe(span);
   });
 });

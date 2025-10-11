@@ -2,7 +2,7 @@
 ## Input
 
 ```javascript
-// @enableFire
+// @enableFire @panicThreshold:"none"
 import {fire} from 'react';
 
 /**
@@ -29,21 +29,20 @@ function Component({prop1}) {
 ## Error
 
 ```
-   9 | function Component({prop1}) {
-  10 |   const foo = () => {
-> 11 |     try {
-     |     ^^^^^
-> 12 |       console.log(prop1);
-     | ^^^^^^^^^^^^^^^^^^^^^^^^^
-> 13 |     } finally {
-     | ^^^^^^^^^^^^^^^^^^^^^^^^^
-> 14 |       console.log('jbrown215');
-     | ^^^^^^^^^^^^^^^^^^^^^^^^^
-> 15 |     }
-     | ^^^^^^ Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause (11:15)
+Found 1 error:
+
+Error: [Fire] Untransformed reference to compiler-required feature.
+
+Either remove this `fire` call or ensure it is successfully transformed by the compiler Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause (11:4).
+
+error.todo-syntax.ts:18:4
   16 |   };
   17 |   useEffect(() => {
-  18 |     fire(foo());
+> 18 |     fire(foo());
+     |     ^^^^ Untransformed `fire` call
+  19 |   });
+  20 | }
+  21 |
 ```
           
       

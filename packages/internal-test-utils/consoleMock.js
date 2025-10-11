@@ -6,6 +6,7 @@
  */
 
 /* eslint-disable react-internal/no-production-logging */
+
 const chalk = require('chalk');
 const util = require('util');
 const shouldIgnoreConsoleError = require('./shouldIgnoreConsoleError');
@@ -38,24 +39,15 @@ const patchConsoleMethod = (methodName, logged) => {
       (methodName === 'error' || methodName === 'warn')
     ) {
       const React = require('react');
+
+      // Ideally we could remove this check, but we have some tests like
+      // useSyncExternalStoreShared-test that tests against React 17,
+      // which doesn't have the captureOwnerStack method.
       if (React.captureOwnerStack) {
-        // enableOwnerStacks enabled. When it's always on, we can assume this case.
         const stack = React.captureOwnerStack();
         if (stack) {
           format += '%s';
           args.push(stack);
-        }
-      } else {
-        // Otherwise we have to use internals to emulate parent stacks.
-        const ReactSharedInternals =
-          React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE ||
-          React.__SERVER_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
-        if (ReactSharedInternals && ReactSharedInternals.getCurrentStack) {
-          const stack = ReactSharedInternals.getCurrentStack();
-          if (stack !== '') {
-            format += '%s';
-            args.push(stack);
-          }
         }
       }
     }
@@ -164,7 +156,8 @@ function normalizeCodeLocInfo(str) {
   //  at Component (/path/filename.js:123:45)
   // React format:
   //    in Component (at filename.js:123)
-  return str.replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function (m, name) {
+  return str.replace(/\n +(?:at|in) ([^(\[\n]+)[^\n]*/g, function (m, name) {
+    name = name.trim();
     if (name.endsWith('.render')) {
       // Class components will have the `render` method as part of their stack trace.
       // We strip that out in our normalization to make it look more like component stacks.
@@ -362,7 +355,7 @@ export function createLogAssertion(
         let argIndex = 0;
         // console.* could have been called with a non-string e.g. `console.error(new Error())`
         // eslint-disable-next-line react-internal/safe-string-coercion
-        String(format).replace(/%s|%c/g, () => argIndex++);
+        String(format).replace(/%s|%c|%o/g, () => argIndex++);
         if (argIndex !== args.length) {
           if (format.includes('%c%s')) {
             // We intentionally use mismatching formatting when printing badging because we don't know
@@ -389,8 +382,9 @@ export function createLogAssertion(
 
         // Main logic to check if log is expected, with the component stack.
         if (
-          normalizedMessage === expectedMessage ||
-          normalizedMessage.includes(expectedMessage)
+          typeof expectedMessage === 'string' &&
+          (normalizedMessage === expectedMessage ||
+            normalizedMessage.includes(expectedMessage))
         ) {
           if (isLikelyAComponentStack(normalizedMessage)) {
             if (expectedWithoutStack === true) {

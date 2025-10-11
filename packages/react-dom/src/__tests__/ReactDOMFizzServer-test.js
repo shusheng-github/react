@@ -83,16 +83,18 @@ describe('ReactDOMFizzServer', () => {
     global.Node = global.window.Node;
     global.addEventListener = global.window.addEventListener;
     global.MutationObserver = global.window.MutationObserver;
+    // The Fizz runtime assumes requestAnimationFrame exists so we need to polyfill it.
+    global.requestAnimationFrame = global.window.requestAnimationFrame = cb =>
+      setTimeout(cb);
     container = document.getElementById('container');
 
+    CSPnonce = null;
     Scheduler = require('scheduler');
     React = require('react');
     ReactDOM = require('react-dom');
     ReactDOMClient = require('react-dom/client');
     ReactDOMFizzServer = require('react-dom/server');
-    if (__EXPERIMENTAL__) {
-      ReactDOMFizzStatic = require('react-dom/static');
-    }
+    ReactDOMFizzStatic = require('react-dom/static');
     Stream = require('stream');
     Suspense = React.Suspense;
     use = React.use;
@@ -206,6 +208,7 @@ describe('ReactDOMFizzServer', () => {
     buffer = '';
 
     if (!bufferedContent) {
+      jest.runAllTimers();
       return;
     }
 
@@ -314,6 +317,8 @@ describe('ReactDOMFizzServer', () => {
       div.innerHTML = bufferedContent;
       await insertNodesAndExecuteScripts(div, streamingContainer, CSPnonce);
     }
+    // Let throttled boundaries reveal
+    jest.runAllTimers();
   }
 
   function resolveText(text) {
@@ -602,12 +607,12 @@ describe('ReactDOMFizzServer', () => {
       ]);
 
       // check that there are 6 scripts with a matching nonce:
-      // The runtime script, an inline bootstrap script, two bootstrap scripts and two bootstrap modules
+      // The runtime script or initial paint time, an inline bootstrap script, two bootstrap scripts and two bootstrap modules
       expect(
         Array.from(container.getElementsByTagName('script')).filter(
           node => node.getAttribute('nonce') === CSPnonce,
         ).length,
-      ).toEqual(gate(flags => flags.shouldUseFizzExternalRuntime) ? 6 : 5);
+      ).toEqual(6);
 
       await act(() => {
         resolve({default: Text});
@@ -809,6 +814,52 @@ describe('ReactDOMFizzServer', () => {
     expect(loggedErrors).toEqual([theError]);
   });
 
+  it('should have special stacks if Suspense fallback', async () => {
+    const infinitePromise = new Promise(() => {});
+    const InfiniteComponent = React.lazy(() => {
+      return infinitePromise;
+    });
+
+    function Throw({text}) {
+      throw new Error(text);
+    }
+
+    function App() {
+      return (
+        <Suspense fallback="Loading">
+          <div>
+            <Suspense fallback={<Throw text="Bye" />}>
+              <InfiniteComponent text="Hi" />
+            </Suspense>
+          </div>
+        </Suspense>
+      );
+    }
+
+    const loggedErrors = [];
+    function onError(x, errorInfo) {
+      loggedErrors.push({
+        message: x.message,
+        componentStack: errorInfo.componentStack,
+      });
+      return 'Hash of (' + x.message + ')';
+    }
+    loggedErrors.length = 0;
+
+    await act(() => {
+      const {pipe} = renderToPipeableStream(<App />, {
+        onError,
+      });
+      pipe(writable);
+    });
+
+    expect(loggedErrors.length).toBe(1);
+    expect(loggedErrors[0].message).toBe('Bye');
+    expect(normalizeCodeLocInfo(loggedErrors[0].componentStack)).toBe(
+      componentStack(['Throw', 'Suspense Fallback', 'div', 'Suspense', 'App']),
+    );
+  });
+
   it('should asynchronously load a lazy element', async () => {
     let resolveElement;
     const lazyElement = React.lazy(() => {
@@ -836,7 +887,7 @@ describe('ReactDOMFizzServer', () => {
         container.childNodes,
         renderOptions.unstable_externalRuntimeSrc,
       ).length,
-    ).toBe(1);
+    ).toBe(gate(flags => flags.shouldUseFizzExternalRuntime) ? 1 : 2);
     await act(() => {
       resolveElement({default: <Text text="Hello" />});
     });
@@ -1283,7 +1334,7 @@ describe('ReactDOMFizzServer', () => {
     function App({showMore}) {
       return (
         <div>
-          <SuspenseList revealOrder="forwards">
+          <SuspenseList revealOrder="forwards" tail="visible">
             {a}
             {b}
             {showMore ? (
@@ -1312,10 +1363,8 @@ describe('ReactDOMFizzServer', () => {
     expect(ref.current).toBe(null);
     expect(getVisibleChildren(container)).toEqual(
       <div>
-        Loading A
-        {/* // TODO: This is incorrect. It should be "Loading B" but Fizz SuspenseList
-            // isn't implemented fully yet. */}
-        <span>B</span>
+        {'Loading A'}
+        {'Loading B'}
       </div>,
     );
 
@@ -1329,11 +1378,9 @@ describe('ReactDOMFizzServer', () => {
     // We haven't resolved yet.
     expect(getVisibleChildren(container)).toEqual(
       <div>
-        Loading A
-        {/* // TODO: This is incorrect. It should be "Loading B" but Fizz SuspenseList
-            // isn't implemented fully yet. */}
-        <span>B</span>
-        Loading C
+        {'Loading A'}
+        {'Loading B'}
+        {'Loading C'}
       </div>,
     );
 
@@ -1794,7 +1841,7 @@ describe('ReactDOMFizzServer', () => {
   function normalizeCodeLocInfo(str) {
     return (
       str &&
-      String(str).replace(/\n +(?:at|in) ([\S]+)[^\n]*/g, function (m, name) {
+      String(str).replace(/\n +(?:at|in) ([^\(]+) [^\n]*/g, function (m, name) {
         return '\n    in ' + name + ' (at **)';
       })
     );
@@ -1843,15 +1890,9 @@ describe('ReactDOMFizzServer', () => {
     assertConsoleErrorDev([
       '<inCorrectTag /> is using incorrect casing. Use PascalCase for React components, or lowercase for HTML elements.' +
         '\n' +
-        (gate(flags => flags.enableOwnerStacks)
-          ? '    in inCorrectTag (at **)\n' +
-            '    in C (at **)\n' +
-            '    in A (at **)'
-          : '    in inCorrectTag (at **)\n' +
-            '    in C (at **)\n' +
-            '    in Suspense (at **)\n' +
-            '    in div (at **)\n' +
-            '    in A (at **)'),
+        '    in inCorrectTag (at **)\n' +
+        '    in C (at **)\n' +
+        '    in A (at **)',
     ]);
 
     await act(() => {
@@ -1862,17 +1903,11 @@ describe('ReactDOMFizzServer', () => {
     assertConsoleErrorDev([
       'Each child in a list should have a unique "key" prop.\n\nCheck the render method of `B`.' +
         ' See https://react.dev/link/warning-keys for more information.\n' +
-        (gate(flags => flags.enableOwnerStacks)
-          ? '    in span (at **)\n' +
-            '    in mapper (at **)\n' +
-            '    in Array.map (at **)\n' +
-            '    in B (at **)\n' +
-            '    in A (at **)'
-          : '    in span (at **)\n' +
-            '    in B (at **)\n' +
-            '    in Suspense (at **)\n' +
-            '    in div (at **)\n' +
-            '    in A (at **)'),
+        '    in span (at **)\n' +
+        '    in mapper (at **)\n' +
+        '    in Array.map (at **)\n' +
+        '    in B (at **)\n' +
+        '    in A (at **)',
     ]);
 
     expect(getVisibleChildren(container)).toEqual(
@@ -1954,13 +1989,7 @@ describe('ReactDOMFizzServer', () => {
         '    in TestProvider (at **)',
       'TestConsumer uses the legacy contextTypes API which will soon be removed. ' +
         'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
-        '    in TestConsumer (at **)' +
-        (gate('enableOwnerStacks')
-          ? ''
-          : '\n    in TestProvider (at **)' +
-            '\n    in Suspense (at **)' +
-            '\n    in div (at **)' +
-            '\n    in TestProvider (at **)'),
+        '    in TestConsumer (at **)',
     ]);
     expect(getVisibleChildren(container)).toEqual(
       <div>
@@ -3598,7 +3627,13 @@ describe('ReactDOMFizzServer', () => {
     expect(document.head.innerHTML).toBe(
       '<script type="importmap">' +
         JSON.stringify(importMap) +
-        '</script><script async="" src="foo"></script>',
+        '</script><script async="" src="foo"></script>' +
+        (gate(flags => flags.shouldUseFizzExternalRuntime)
+          ? '<script src="react-dom-bindings/src/server/ReactDOMServerExternalRuntime.js" async=""></script>'
+          : '') +
+        (gate(flags => flags.enableFizzBlockingRender)
+          ? '<link rel="expect" href="#_R_" blocking="render">'
+          : ''),
     );
   });
 
@@ -3723,23 +3758,43 @@ describe('ReactDOMFizzServer', () => {
     });
   });
 
-  it('encodes img srcset and sizes into preload header params', async () => {
+  it('omits images from preload headers if they contain srcset and sizes', async () => {
     let headers = null;
     function onHeaders(x) {
       headers = x;
     }
 
     function App() {
-      ReactDOM.preload('presrc', {
+      ReactDOM.preload('responsive-preload-set-only', {
         as: 'image',
         fetchPriority: 'high',
-        imageSrcSet: 'presrcset',
-        imageSizes: 'presizes',
+        imageSrcSet: 'srcset',
+      });
+      ReactDOM.preload('responsive-preload', {
+        as: 'image',
+        fetchPriority: 'high',
+        imageSrcSet: 'srcset',
+        imageSizes: 'sizes',
+      });
+      ReactDOM.preload('non-responsive-preload', {
+        as: 'image',
+        fetchPriority: 'high',
       });
       return (
         <html>
           <body>
-            <img src="src" srcSet="srcset" sizes="sizes" />
+            <img
+              src="responsive-img-set-only"
+              fetchPriority="high"
+              srcSet="srcset"
+            />
+            <img
+              src="responsive-img"
+              fetchPriority="high"
+              srcSet="srcset"
+              sizes="sizes"
+            />
+            <img src="non-responsive-img" fetchPriority="high" />
           </body>
         </html>
       );
@@ -3751,8 +3806,8 @@ describe('ReactDOMFizzServer', () => {
 
     expect(headers).toEqual({
       Link: `
-<presrc>; rel=preload; as="image"; fetchpriority="high"; imagesrcset="presrcset"; imagesizes="presizes",
- <src>; rel=preload; as="image"; imagesrcset="srcset"; imagesizes="sizes"
+<non-responsive-preload>; rel=preload; as="image"; fetchpriority="high", 
+<non-responsive-img>; rel=preload; as="image"; fetchpriority="high"
 `
         .replaceAll('\n', '')
         .trim(),
@@ -4187,7 +4242,7 @@ describe('ReactDOMFizzServer', () => {
         renderOptions.unstable_externalRuntimeSrc,
       ).map(n => n.outerHTML),
     ).toEqual([
-      '<script src="foo" async=""></script>',
+      '<script src="foo" id="_R_" async=""></script>',
       '<script src="bar" async=""></script>',
       '<script src="baz" integrity="qux" async=""></script>',
       '<script type="module" src="quux" async=""></script>',
@@ -4274,7 +4329,7 @@ describe('ReactDOMFizzServer', () => {
         renderOptions.unstable_externalRuntimeSrc,
       ).map(n => n.outerHTML),
     ).toEqual([
-      '<script src="foo" async=""></script>',
+      '<script src="foo" id="_R_" async=""></script>',
       '<script src="bar" async=""></script>',
       '<script src="baz" crossorigin="" async=""></script>',
       '<script src="qux" crossorigin="" async=""></script>',
@@ -4492,7 +4547,8 @@ describe('ReactDOMFizzServer', () => {
     expect(document.getElementsByTagName('script').length).toEqual(1);
   });
 
-  it('does not send the external runtime for static pages', async () => {
+  // @gate shouldUseFizzExternalRuntime
+  it('does (unfortunately) send the external runtime for static pages', async () => {
     await act(() => {
       const {pipe} = renderToPipeableStream(
         <html>
@@ -4506,11 +4562,19 @@ describe('ReactDOMFizzServer', () => {
     });
 
     // no scripts should be sent
-    expect(document.getElementsByTagName('script').length).toEqual(0);
+    expect(document.getElementsByTagName('script').length).toEqual(1);
 
     // the html should be as-is
     expect(document.documentElement.innerHTML).toEqual(
-      '<head></head><body><p>hello world!</p></body>',
+      '<head><script src="react-dom-bindings/src/server/ReactDOMServerExternalRuntime.js" async=""></script>' +
+        (gate(flags => flags.enableFizzBlockingRender)
+          ? '<link rel="expect" href="#_R_" blocking="render">'
+          : '') +
+        '</head><body><p>hello world!</p>' +
+        (gate(flags => flags.enableFizzBlockingRender)
+          ? '<template id="_R_"></template>'
+          : '') +
+        '</body>',
     );
   });
 
@@ -4590,7 +4654,6 @@ describe('ReactDOMFizzServer', () => {
     );
   });
 
-  // @gate favorSafetyOverHydrationPerf
   it('#24384: Suspending should halt hydration warnings but still emit hydration warnings after unsuspending if mismatches are genuine', async () => {
     const makeApp = () => {
       let resolve, resolved;
@@ -4662,7 +4725,7 @@ describe('ReactDOMFizzServer', () => {
     // client-side rendering.
     await clientResolve();
     await waitForAll([
-      "onRecoverableError: Hydration failed because the server rendered HTML didn't match the client.",
+      "onRecoverableError: Hydration failed because the server rendered text didn't match the client.",
     ]);
     expect(getVisibleChildren(container)).toEqual(
       <div>
@@ -4674,7 +4737,6 @@ describe('ReactDOMFizzServer', () => {
     await waitForAll([]);
   });
 
-  // @gate favorSafetyOverHydrationPerf
   it('only warns once on hydration mismatch while within a suspense boundary', async () => {
     const App = ({text}) => {
       return (
@@ -4710,7 +4772,7 @@ describe('ReactDOMFizzServer', () => {
       },
     });
     await waitForAll([
-      "onRecoverableError: Hydration failed because the server rendered HTML didn't match the client.",
+      "onRecoverableError: Hydration failed because the server rendered text didn't match the client.",
     ]);
 
     expect(getVisibleChildren(container)).toEqual(
@@ -5308,7 +5370,9 @@ describe('ReactDOMFizzServer', () => {
       });
 
       expect(container.innerHTML).toEqual(
-        '<div>hello<b>world, <!-- -->Foo</b>!</div>',
+        (gate(flags => flags.shouldUseFizzExternalRuntime)
+          ? '<script src="react-dom-bindings/src/server/ReactDOMServerExternalRuntime.js" async=""></script>'
+          : '') + '<div>hello<b>world, <!-- -->Foo</b>!</div>',
       );
       const errors = [];
       ReactDOMClient.hydrateRoot(container, <App name="Foo" />, {
@@ -5509,7 +5573,7 @@ describe('ReactDOMFizzServer', () => {
         pipe(writable);
       });
 
-      expect(container.firstElementChild.outerHTML).toEqual(
+      expect(container.lastElementChild.outerHTML).toEqual(
         '<div>hello<b>world<!-- --></b></div>',
       );
 
@@ -5547,7 +5611,7 @@ describe('ReactDOMFizzServer', () => {
         pipe(writable);
       });
 
-      expect(container.firstElementChild.outerHTML).toEqual(
+      expect(container.lastElementChild.outerHTML).toEqual(
         '<div>hello<b>world</b></div>',
       );
 
@@ -5687,7 +5751,10 @@ describe('ReactDOMFizzServer', () => {
       });
 
       expect(container.innerHTML).toEqual(
-        '<div><!--$-->hello<!-- -->world<!-- --><!--/$--><!--$-->world<!-- --><!--/$--><!--$-->hello<!-- -->world<!-- --><br><!--/$--><!--$-->world<!-- --><br><!--/$--></div>',
+        (gate(flags => flags.shouldUseFizzExternalRuntime)
+          ? '<script src="react-dom-bindings/src/server/ReactDOMServerExternalRuntime.js" async=""></script>'
+          : '') +
+          '<div><!--$-->hello<!-- -->world<!-- --><!--/$--><!--$-->world<!-- --><!--/$--><!--$-->hello<!-- -->world<!-- --><br><!--/$--><!--$-->world<!-- --><br><!--/$--></div>',
       );
 
       const errors = [];
@@ -5851,7 +5918,6 @@ describe('ReactDOMFizzServer', () => {
           'If your `children` prop is using this form try rewriting it using a template string: ' +
           '<title>{`hello ${nameOfUser}`}</title>.\n' +
           '    in title (at **)\n' +
-          (gate('enableOwnerStacks') ? '' : '    in head (at **)\n') +
           '    in App (at **)',
       ]);
 
@@ -5897,7 +5963,6 @@ describe('ReactDOMFizzServer', () => {
           'React Component try moving the <title> tag into that component. ' +
           'If the `children` of <title> is some HTML markup change it to be Text only to be valid HTML.\n' +
           '    in title (at **)\n' +
-          (gate('enableOwnerStacks') ? '' : '    in head (at **)\n') +
           '    in App (at **)',
       ]);
       // object titles are toStringed when float is on
@@ -5941,7 +6006,6 @@ describe('ReactDOMFizzServer', () => {
           'string or number value if so. Otherwise implement a `toString` method that React can ' +
           'use to produce a valid <title>.\n' +
           '    in title (at **)\n' +
-          (gate('enableOwnerStacks') ? '' : '    in head (at **)\n') +
           '    in App (at **)',
       ]);
       // object titles are toStringed when float is on
@@ -6274,6 +6338,63 @@ describe('ReactDOMFizzServer', () => {
     expect(getVisibleChildren(container)).toEqual('Hi');
   });
 
+  it('should correctly handle different promises in React.use() across lazy components', async () => {
+    let promise1;
+    let promise2;
+    let promiseLazy;
+
+    function Component1() {
+      promise1 ??= new Promise(r => setTimeout(() => r('value1'), 50));
+      const data = React.use(promise1);
+      return (
+        <div>
+          {data}
+          <Component2Lazy />
+        </div>
+      );
+    }
+
+    function Component2() {
+      promise2 ??= new Promise(r => setTimeout(() => r('value2'), 50));
+      const data = React.use(promise2);
+      return <div>{data}</div>;
+    }
+
+    const Component2Lazy = React.lazy(async () => {
+      promiseLazy ??= new Promise(r => setTimeout(r, 50));
+      await promiseLazy;
+      return {default: Component2};
+    });
+
+    function App() {
+      return <Component1 />;
+    }
+
+    await act(async () => {
+      const {pipe} = renderToPipeableStream(<App />);
+      pipe(writable);
+    });
+
+    // Wait for promise to resolve
+    await act(async () => {
+      await promise1;
+    });
+    await act(async () => {
+      await promiseLazy;
+    });
+    await act(async () => {
+      await promise2;
+    });
+
+    // Verify both components received the correct values
+    expect(getVisibleChildren(container)).toEqual(
+      <div>
+        value1
+        <div>value2</div>
+      </div>,
+    );
+  });
+
   it('useActionState hydrates without a mismatch', async () => {
     // This is testing an implementation detail: useActionState emits comment
     // nodes into the SSR stream, so this checks that they are handled correctly
@@ -6393,7 +6514,7 @@ describe('ReactDOMFizzServer', () => {
       const ref = React.createRef();
       function App() {
         const [count, setCount] = React.useState(0);
-        const onClick = React.experimental_useEffectEvent(() => {
+        const onClick = React.useEffectEvent(() => {
           setCount(c => c + 1);
         });
         return (
@@ -6423,7 +6544,7 @@ describe('ReactDOMFizzServer', () => {
     it('throws if useEffectEvent is called during a server render', async () => {
       const logs = [];
       function App() {
-        const onRender = React.experimental_useEffectEvent(() => {
+        const onRender = React.useEffectEvent(() => {
           logs.push('rendered');
         });
         onRender();
@@ -6454,8 +6575,8 @@ describe('ReactDOMFizzServer', () => {
     // @gate enableUseEffectEventHook
     it('does not guarantee useEffectEvent return values during server rendering are distinct', async () => {
       function App() {
-        const onClick1 = React.experimental_useEffectEvent(() => {});
-        const onClick2 = React.experimental_useEffectEvent(() => {});
+        const onClick1 = React.useEffectEvent(() => {});
+        const onClick2 = React.useEffectEvent(() => {});
         if (onClick1 === onClick2) {
           return <div />;
         } else {
@@ -6493,7 +6614,18 @@ describe('ReactDOMFizzServer', () => {
     });
 
     expect(document.documentElement.outerHTML).toEqual(
-      '<html><head></head><body><script>try { foo() } catch (e) {} ;</script></body></html>',
+      '<html><head>' +
+        (gate(flags => flags.shouldUseFizzExternalRuntime)
+          ? '<script src="react-dom-bindings/src/server/ReactDOMServerExternalRuntime.js" async=""></script>'
+          : '') +
+        (gate(flags => flags.enableFizzBlockingRender)
+          ? '<link rel="expect" href="#_R_" blocking="render">'
+          : '') +
+        '</head><body><script>try { foo() } catch (e) {} ;</script>' +
+        (gate(flags => flags.enableFizzBlockingRender)
+          ? '<template id="_R_"></template>'
+          : '') +
+        '</body></html>',
     );
   });
 
@@ -6525,23 +6657,11 @@ describe('ReactDOMFizzServer', () => {
 
     assertConsoleErrorDev([
       'A script element was rendered with a number for children. If script element has children it must be a single string. Consider using dangerouslySetInnerHTML or passing a plain string as children.' +
-        componentStack(
-          gate(flags => flags.enableOwnerStacks)
-            ? ['script', 'App']
-            : ['script', 'body', 'html', 'App'],
-        ),
+        componentStack(['script', 'App']),
       'A script element was rendered with an array for children. If script element has children it must be a single string. Consider using dangerouslySetInnerHTML or passing a plain string as children.' +
-        componentStack(
-          gate(flags => flags.enableOwnerStacks)
-            ? ['script', 'App']
-            : ['script', 'body', 'html', 'App'],
-        ),
+        componentStack(['script', 'App']),
       'A script element was rendered with something unexpected for children. If script element has children it must be a single string. Consider using dangerouslySetInnerHTML or passing a plain string as children.' +
-        componentStack(
-          gate(flags => flags.enableOwnerStacks)
-            ? ['script', 'App']
-            : ['script', 'body', 'html', 'App'],
-        ),
+        componentStack(['script', 'App']),
     ]);
   });
 
@@ -8524,7 +8644,7 @@ describe('ReactDOMFizzServer', () => {
     expect(document.body.textContent).toBe('HelloWorld');
   });
 
-  // @gate __DEV__ && enableOwnerStacks
+  // @gate __DEV__
   it('can get the component owner stacks during rendering in dev', async () => {
     let stack;
 
@@ -8557,7 +8677,7 @@ describe('ReactDOMFizzServer', () => {
     );
   });
 
-  // @gate __DEV__ && enableOwnerStacks
+  // @gate __DEV__
   it('can get the component owner stacks for onError in dev', async () => {
     const thrownError = new Error('hi');
     let caughtError;
@@ -9004,7 +9124,6 @@ describe('ReactDOMFizzServer', () => {
         </body>
       </html>,
     );
-    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <#document>']);
 
     root.unmount();
     expect(getVisibleChildren(document)).toEqual(
@@ -9092,56 +9211,30 @@ describe('ReactDOMFizzServer', () => {
         </body>
       </html>,
     );
-    if (gate(flags => flags.enableOwnerStacks)) {
-      assertConsoleErrorDev([
-        [
-          'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
-          {withoutStack: true},
-        ],
-        'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
-          '\n' +
-          '\n  <App>' +
-          '\n>   <html>' +
-          '\n      <Suspense fallback="this fallb...">' +
-          '\n        <meta>' +
-          '\n>       <meta itemProp="" content="before">' +
-          '\n      ...' +
-          '\n' +
-          '\n    in meta (at **)' +
-          '\n    in App (at **)',
-        '<html> cannot contain a nested <meta>.\nSee this log for the ancestor stack trace.' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        [
-          'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
-          {withoutStack: true},
-        ],
-      ]);
-    } else {
-      assertConsoleErrorDev([
-        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
-          '\n' +
-          '\n  <App>' +
-          '\n>   <html>' +
-          '\n      <Suspense fallback="this fallb...">' +
-          '\n        <meta>' +
-          '\n>       <meta itemProp="" content="before">' +
-          '\n      ...' +
-          '\n' +
-          '\n    in meta (at **)' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-      ]);
-    }
+    assertConsoleErrorDev([
+      [
+        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
+        {withoutStack: true},
+      ],
+      'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
+        '\n' +
+        '\n  <App>' +
+        '\n>   <html>' +
+        '\n      <Suspense fallback="this fallb...">' +
+        '\n        <meta>' +
+        '\n>       <meta itemProp="" content="before">' +
+        '\n      ...' +
+        '\n' +
+        '\n    in meta (at **)' +
+        '\n    in App (at **)',
+      '<html> cannot contain a nested <meta>.\nSee this log for the ancestor stack trace.' +
+        '\n    in html (at **)' +
+        '\n    in App (at **)',
+      [
+        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
+        {withoutStack: true},
+      ],
+    ]);
 
     await root.unmount();
     expect(getVisibleChildren(document)).toEqual(
@@ -9234,56 +9327,30 @@ describe('ReactDOMFizzServer', () => {
         </body>
       </html>,
     );
-    if (gate(flags => flags.enableOwnerStacks)) {
-      assertConsoleErrorDev([
-        [
-          'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
-          {withoutStack: true},
-        ],
-        'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
-          '\n' +
-          '\n  <App>' +
-          '\n>   <html>' +
-          '\n      <Suspense fallback="this fallb...">' +
-          '\n        <meta>' +
-          '\n>       <meta itemProp="" content="before">' +
-          '\n      ...' +
-          '\n' +
-          '\n    in meta (at **)' +
-          '\n    in App (at **)',
-        '<html> cannot contain a nested <meta>.\nSee this log for the ancestor stack trace.' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        [
-          'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
-          {withoutStack: true},
-        ],
-      ]);
-    } else {
-      assertConsoleErrorDev([
-        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
-          '\n' +
-          '\n  <App>' +
-          '\n>   <html>' +
-          '\n      <Suspense fallback="this fallb...">' +
-          '\n        <meta>' +
-          '\n>       <meta itemProp="" content="before">' +
-          '\n      ...' +
-          '\n' +
-          '\n    in meta (at **)' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.' +
-          '\n    in Suspense (at **)' +
-          '\n    in html (at **)' +
-          '\n    in App (at **)',
-      ]);
-    }
+    assertConsoleErrorDev([
+      [
+        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
+        {withoutStack: true},
+      ],
+      'In HTML, <meta> cannot be a child of <html>.\nThis will cause a hydration error.' +
+        '\n' +
+        '\n  <App>' +
+        '\n>   <html>' +
+        '\n      <Suspense fallback="this fallb...">' +
+        '\n        <meta>' +
+        '\n>       <meta itemProp="" content="before">' +
+        '\n      ...' +
+        '\n' +
+        '\n    in meta (at **)' +
+        '\n    in App (at **)',
+      '<html> cannot contain a nested <meta>.\nSee this log for the ancestor stack trace.' +
+        '\n    in html (at **)' +
+        '\n    in App (at **)',
+      [
+        'Cannot render a <meta> outside the main document if it has an `itemProp` prop. `itemProp` suggests the tag belongs to an `itemScope` which can appear anywhere in the DOM. If you were intending for React to hoist this <meta> remove the `itemProp` prop. Otherwise, try moving this tag into the <head> or <body> of the Document.',
+        {withoutStack: true},
+      ],
+    ]);
 
     await root.unmount();
     expect(getVisibleChildren(document)).toEqual(
@@ -9528,6 +9595,102 @@ describe('ReactDOMFizzServer', () => {
           />
         </head>
         <body />
+      </html>,
+    );
+  });
+
+  it('will attempt to render the preamble inline to allow rendering before a later abort in the same task', async () => {
+    const promise = new Promise(() => {});
+    function Pending() {
+      React.use(promise);
+    }
+
+    const controller = new AbortController();
+    function Abort() {
+      controller.abort();
+      return <Comp />;
+    }
+
+    function Comp() {
+      return null;
+    }
+
+    function App() {
+      return (
+        <html>
+          <head>
+            <meta content="here" />
+          </head>
+          <body>
+            <main>hello</main>
+            <Suspense>
+              <Pending />
+            </Suspense>
+            <Abort />
+          </body>
+        </html>
+      );
+    }
+
+    const signal = controller.signal;
+
+    let thrownError = null;
+    const errors = [];
+    try {
+      await act(() => {
+        const {pipe, abort} = renderToPipeableStream(<App />, {
+          onError(e, ei) {
+            errors.push({
+              error: e,
+              componentStack: normalizeCodeLocInfo(ei.componentStack),
+            });
+          },
+        });
+        signal.addEventListener('abort', () => abort('boom'));
+        pipe(writable);
+      });
+    } catch (e) {
+      thrownError = e;
+    }
+
+    expect(thrownError).toBe('boom');
+    // TODO there should actually be three errors. One for the pending Suspense, one for the fallback task, and one for the task
+    // that does the abort itself. At the moment abort will flush queues and if there is no pending tasks will close the request before
+    // the task which initiated the abort can even be processed. This is a bug but not one that I am fixing with the current change
+    // so I am asserting the current behavior
+    expect(errors).toEqual([
+      {
+        error: 'boom',
+        componentStack: componentStack([
+          'Pending',
+          'Suspense',
+          'body',
+          'html',
+          'App',
+        ]),
+      },
+      {
+        error: 'boom',
+        componentStack: componentStack([
+          'Suspense Fallback',
+          'body',
+          'html',
+          'App',
+        ]),
+        // }, {
+        //   error: 'boom',
+        //   componentStack: componentStack(['Abort', 'body', 'html', 'App'])
+      },
+    ]);
+
+    // We expect the render to throw before streaming anything so the default
+    // document is still loaded
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container" />
+        </body>
       </html>,
     );
   });
@@ -10173,7 +10336,6 @@ describe('ReactDOMFizzServer', () => {
         </body>
       </html>,
     );
-    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <#document>']);
 
     root.unmount();
     expect(getVisibleChildren(document)).toEqual(
@@ -10235,81 +10397,490 @@ describe('ReactDOMFizzServer', () => {
       },
     });
     await waitForAll([]);
-    if (gate(flags => flags.favorSafetyOverHydrationPerf)) {
-      expect(getVisibleChildren(document)).toEqual(
-        <html data-y="client">
-          <head data-y="client">
-            <meta itemprop="" name="client" />
-          </head>
-          <body data-y="client">client</body>
-        </html>,
-      );
-      expect(recoverableErrors).toEqual([
-        expect.stringContaining(
-          "Hydration failed because the server rendered HTML didn't match the client.",
-        ),
-      ]);
-    } else {
-      expect(getVisibleChildren(document)).toEqual(
-        <html data-x="server">
-          <head data-x="server">
-            <meta itemprop="" content="server" />
-          </head>
-          <body data-x="server">server</body>
-        </html>,
-      );
-      expect(recoverableErrors).toEqual([]);
-      assertConsoleErrorDev([
-        "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:" +
-          '\n' +
-          "\n- A server/client branch `if (typeof window !== 'undefined')`." +
-          "\n- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called." +
-          "\n- Date formatting in a user's locale which doesn't match the server." +
-          '\n- External changing data without sending a snapshot of it along with the HTML.' +
-          '\n- Invalid HTML tag nesting.' +
-          '\n' +
-          '\nIt can also happen if the client has a browser extension installed which messes with the HTML before React loaded.' +
-          '\n' +
-          '\nhttps://react.dev/link/hydration-mismatch' +
-          '\n' +
-          '\n  <ClientApp>' +
-          '\n    <Suspense>' +
-          '\n      <html' +
-          '\n+       data-y="client"' +
-          '\n-       data-y={null}' +
-          '\n-       data-x="server"' +
-          '\n      >' +
-          '\n        <head' +
-          '\n+         data-y="client"' +
-          '\n-         data-y={null}' +
-          '\n-         data-x="server"' +
-          '\n        >' +
-          '\n          <meta' +
-          '\n            itemProp=""' +
-          '\n+           name="client"' +
-          '\n-           name={null}' +
-          '\n-           content="server"' +
-          '\n          >' +
-          '\n        <body' +
-          '\n+         data-y="client"' +
-          '\n-         data-y={null}' +
-          '\n-         data-x="server"' +
-          '\n        >' +
-          '\n+         client' +
-          '\n-         server' +
-          '\n+         client' +
-          '\n-         server' +
-          '\n' +
-          '\n    in Suspense (at **)' +
-          '\n    in ClientApp (at **)',
-      ]);
-    }
+    expect(getVisibleChildren(document)).toEqual(
+      <html data-y="client">
+        <head data-y="client">
+          <meta itemprop="" name="client" />
+        </head>
+        <body data-y="client">client</body>
+      </html>,
+    );
+    expect(recoverableErrors).toEqual([
+      expect.stringContaining(
+        "Hydration failed because the server rendered text didn't match the client.",
+      ),
+    ]);
 
     root.unmount();
     expect(getVisibleChildren(document)).toEqual(
       <html>
         <head />
         <body />
+      </html>,
+    );
+  });
+
+  it('can render styles with nonce', async () => {
+    CSPnonce = 'R4nd0m';
+    await act(() => {
+      const {pipe} = renderToPipeableStream(
+        <>
+          <style
+            href="foo"
+            precedence="default"
+            nonce={CSPnonce}>{`.foo { color: hotpink; }`}</style>
+          <style
+            href="bar"
+            precedence="default"
+            nonce={CSPnonce}>{`.bar { background-color: blue; }`}</style>
+        </>,
+        {nonce: {style: CSPnonce}},
+      );
+      pipe(writable);
+    });
+    expect(document.querySelector('style').nonce).toBe(CSPnonce);
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container">
+            <style
+              data-precedence="default"
+              data-href="foo bar"
+              nonce={
+                CSPnonce
+              }>{`.foo { color: hotpink; }.bar { background-color: blue; }`}</style>
+          </div>
+        </body>
+      </html>,
+    );
+  });
+
+  it("shouldn't render styles with mismatched nonce", async () => {
+    CSPnonce = 'R4nd0m';
+    await act(() => {
+      const {pipe} = renderToPipeableStream(
+        <>
+          <style
+            href="foo"
+            precedence="default"
+            nonce={CSPnonce}>{`.foo { color: hotpink; }`}</style>
+          <style
+            href="bar"
+            precedence="default"
+            nonce={`${CSPnonce}${CSPnonce}`}>{`.bar { background-color: blue; }`}</style>
+        </>,
+        {nonce: {style: CSPnonce}},
+      );
+      pipe(writable);
+    });
+    assertConsoleErrorDev([
+      'React encountered a style tag with `precedence` "default" and `nonce` "R4nd0mR4nd0m". When React manages style rules using `precedence` it will only include rules if the nonce matches the style nonce "R4nd0m" that was included with this render.',
+    ]);
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container">
+            <style
+              data-precedence="default"
+              data-href="foo"
+              nonce={CSPnonce}>{`.foo { color: hotpink; }`}</style>
+          </div>
+        </body>
+      </html>,
+    );
+  });
+
+  it("should render styles without nonce when render call doesn't receive nonce", async () => {
+    await act(() => {
+      const {pipe} = renderToPipeableStream(
+        <>
+          <style
+            href="foo"
+            precedence="default"
+            nonce="R4nd0m">{`.foo { color: hotpink; }`}</style>
+        </>,
+      );
+      pipe(writable);
+    });
+    assertConsoleErrorDev([
+      'React encountered a style tag with `precedence` "default" and `nonce` "R4nd0m". When React manages style rules using `precedence` it will only include a nonce attributes if you also provide the same style nonce value as a render option.',
+    ]);
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container">
+            <style
+              data-precedence="default"
+              data-href="foo">{`.foo { color: hotpink; }`}</style>
+          </div>
+        </body>
+      </html>,
+    );
+  });
+
+  it('should render styles without nonce when render call receives a string nonce dedicated to scripts', async () => {
+    CSPnonce = 'R4nd0m';
+    await act(() => {
+      const {pipe} = renderToPipeableStream(
+        <>
+          <style
+            href="foo"
+            precedence="default"
+            nonce={CSPnonce}>{`.foo { color: hotpink; }`}</style>
+        </>,
+        {nonce: CSPnonce},
+      );
+      pipe(writable);
+    });
+    assertConsoleErrorDev([
+      'React encountered a style tag with `precedence` "default" and `nonce` "R4nd0m". When React manages style rules using `precedence` it will only include a nonce attributes if you also provide the same style nonce value as a render option.',
+    ]);
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container">
+            <style
+              data-precedence="default"
+              data-href="foo">{`.foo { color: hotpink; }`}</style>
+          </div>
+        </body>
+      </html>,
+    );
+  });
+
+  it('should allow for different script and style nonces', async () => {
+    CSPnonce = 'R4nd0m';
+    await act(() => {
+      const {pipe} = renderToPipeableStream(
+        <>
+          <style
+            href="foo"
+            precedence="default"
+            nonce="D1ff3r3nt">{`.foo { color: hotpink; }`}</style>
+        </>,
+        {
+          nonce: {script: CSPnonce, style: 'D1ff3r3nt'},
+          bootstrapScriptContent: 'function noop(){}',
+        },
+      );
+      pipe(writable);
+    });
+    const scripts = Array.from(container.getElementsByTagName('script')).filter(
+      node => node.getAttribute('nonce') === CSPnonce,
+    );
+    expect(scripts[scripts.length - 1].textContent).toBe('function noop(){}');
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <div id="container">
+            <style
+              data-precedence="default"
+              data-href="foo"
+              nonce="D1ff3r3nt">{`.foo { color: hotpink; }`}</style>
+          </div>
+        </body>
+      </html>,
+    );
+  });
+
+  it('should not error when discarding deeply nested Suspense boundaries in a parent fallback partially complete before the parent boundary resolves', async () => {
+    let resolve1;
+    const promise1 = new Promise(r => (resolve1 = r));
+    let resolve2;
+    const promise2 = new Promise(r => (resolve2 = r));
+    const promise3 = new Promise(r => {});
+
+    function Use({children, promise}) {
+      React.use(promise);
+      return children;
+    }
+    function App() {
+      return (
+        <div>
+          <Suspense
+            fallback={
+              <div>
+                <Suspense fallback="Loading...">
+                  <div>
+                    <Use promise={promise1}>
+                      <div>
+                        <Suspense fallback="Loading more...">
+                          <div>
+                            <Use promise={promise3}>
+                              <div>deep fallback</div>
+                            </Use>
+                          </div>
+                        </Suspense>
+                      </div>
+                    </Use>
+                  </div>
+                </Suspense>
+              </div>
+            }>
+            <Use promise={promise2}>Success!</Use>
+          </Suspense>
+        </div>
+      );
+    }
+
+    await act(() => {
+      const {pipe} = renderToPipeableStream(<App />);
+      pipe(writable);
+    });
+
+    expect(getVisibleChildren(container)).toEqual(
+      <div>
+        <div>Loading...</div>
+      </div>,
+    );
+
+    await act(() => {
+      resolve1('resolved');
+      resolve2('resolved');
+    });
+
+    expect(getVisibleChildren(container)).toEqual(<div>Success!</div>);
+  });
+
+  it('should not error when discarding deeply nested Suspense boundaries in a parent fallback partially complete before the parent boundary resolves with empty segments', async () => {
+    let resolve1;
+    const promise1 = new Promise(r => (resolve1 = r));
+    let resolve2;
+    const promise2 = new Promise(r => (resolve2 = r));
+    const promise3 = new Promise(r => {});
+
+    function Use({children, promise}) {
+      React.use(promise);
+      return children;
+    }
+    function App() {
+      return (
+        <div>
+          <Suspense
+            fallback={
+              <Suspense fallback="Loading...">
+                <Use promise={promise1}>
+                  <Suspense fallback="Loading more...">
+                    <Use promise={promise3}>
+                      <div>deep fallback</div>
+                    </Use>
+                  </Suspense>
+                </Use>
+              </Suspense>
+            }>
+            <Use promise={promise2}>Success!</Use>
+          </Suspense>
+        </div>
+      );
+    }
+
+    await act(() => {
+      const {pipe} = renderToPipeableStream(<App />);
+      pipe(writable);
+    });
+
+    expect(getVisibleChildren(container)).toEqual(<div>Loading...</div>);
+
+    await act(() => {
+      resolve1('resolved');
+      resolve2('resolved');
+    });
+
+    expect(getVisibleChildren(container)).toEqual(<div>Success!</div>);
+  });
+
+  it('should always flush the boundaries contributing the preamble regardless of their size', async () => {
+    const longDescription =
+      `I need to make this segment somewhat large because it needs to be large enought to be outlined during the initial flush. Setting the progressive chunk size to near zero isn't enough because there is a fixed minimum size that we use to avoid doing the size tracking altogether and this needs to be larger than that at least.
+
+Unfortunately that previous paragraph wasn't quite long enough so I'll continue with some more prose and maybe throw on some repeated additional strings at the end for good measure.
+
+` + 'a'.repeat(500);
+
+    const randomTag = Math.random().toString(36).slice(2, 10);
+
+    function App() {
+      return (
+        <Suspense fallback={randomTag}>
+          <html lang="en">
+            <body>
+              <main>{longDescription}</main>
+            </body>
+          </html>
+        </Suspense>
+      );
+    }
+
+    let streamedContent = '';
+    writable.on('data', chunk => (streamedContent += chunk));
+
+    await act(() => {
+      renderToPipeableStream(<App />, {progressiveChunkSize: 100}).pipe(
+        writable,
+      );
+    });
+
+    // We don't use the DOM here b/c we execute scripts which hides whether a fallback was shown briefly
+    // Instead we assert that we never emitted the fallback of the Suspense boundary around the body.
+    expect(streamedContent).not.toContain(randomTag);
+  });
+
+  it('should track byte size of shells that may contribute to the preamble when determining if the blocking render exceeds the max size', async () => {
+    const longDescription =
+      `I need to make this segment somewhat large because it needs to be large enought to be outlined during the initial flush. Setting the progressive chunk size to near zero isn't enough because there is a fixed minimum size that we use to avoid doing the size tracking altogether and this needs to be larger than that at least.
+
+Unfortunately that previous paragraph wasn't quite long enough so I'll continue with some more prose and maybe throw on some repeated additional strings at the end for good measure.
+
+` + 'a'.repeat(500);
+
+    const randomTag = Math.random().toString(36).slice(2, 10);
+
+    function App() {
+      return (
+        <>
+          <Suspense fallback={randomTag}>
+            <html lang="en">
+              <body>
+                <main>{longDescription}</main>
+              </body>
+            </html>
+          </Suspense>
+          <div>Outside Preamble</div>
+        </>
+      );
+    }
+
+    let streamedContent = '';
+    writable.on('data', chunk => (streamedContent += chunk));
+
+    const errors = [];
+    await act(() => {
+      renderToPipeableStream(<App />, {
+        progressiveChunkSize: 5,
+        onError(e) {
+          errors.push(e);
+        },
+      }).pipe(writable);
+    });
+
+    if (gate(flags => flags.enableFizzBlockingRender)) {
+      expect(errors.length).toBe(1);
+      expect(errors[0].message).toContain(
+        // We set the chunk size low enough that the threshold rounds to zero kB
+        'This rendered a large document (>0 kB) without any Suspense boundaries around most of it.',
+      );
+    } else {
+      expect(errors.length).toBe(0);
+    }
+
+    // We don't use the DOM here b/c we execute scripts which hides whether a fallback was shown briefly
+    // Instead we assert that we never emitted the fallback of the Suspense boundary around the body.
+    expect(streamedContent).not.toContain(randomTag);
+  });
+
+  it('should be able to Suspend after aborting in the same component without hanging the render', async () => {
+    const controller = new AbortController();
+
+    const promise1 = new Promise(() => {});
+    function AbortAndSuspend() {
+      controller.abort('boom');
+      return React.use(promise1);
+    }
+
+    function App() {
+      return (
+        <html>
+          <body>
+            <Suspense fallback="loading...">
+              {/*
+                The particular code path that was problematic required the Suspend to happen in renderNode
+                rather than retryRenderTask so we render the aborting function inside a host component
+                intentionally here
+              */}
+              <div>
+                <AbortAndSuspend />
+              </div>
+            </Suspense>
+          </body>
+        </html>
+      );
+    }
+
+    const errors = [];
+    await act(async () => {
+      const result = await ReactDOMFizzStatic.prerenderToNodeStream(<App />, {
+        signal: controller.signal,
+        onError(e) {
+          errors.push(e);
+        },
+      });
+
+      result.prelude.pipe(writable);
+    });
+
+    expect(errors).toEqual(['boom']);
+
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>loading...</body>
+      </html>,
+    );
+  });
+
+  it('not error when a suspended fallback segment directly inside another Suspense is abandoned', async () => {
+    function SuspendForever() {
+      React.use(new Promise(() => {}));
+    }
+
+    let resolve = () => {};
+    const suspendPromise = new Promise(r => {
+      resolve = r;
+    });
+    function Suspend() {
+      return React.use(suspendPromise);
+    }
+
+    function App() {
+      return (
+        <html>
+          <body>
+            <Suspense fallback="outer">
+              <Suspense fallback={<SuspendForever />}>
+                <span>hello world</span>
+                <span>
+                  <Suspend />
+                </span>
+              </Suspense>
+            </Suspense>
+          </body>
+        </html>
+      );
+    }
+
+    await act(async () => {
+      const {pipe} = renderToPipeableStream(<App />, {
+        onError() {},
+      });
+      pipe(writable);
+    });
+
+    await act(() => {
+      resolve('!');
+    });
+
+    expect(getVisibleChildren(document)).toEqual(
+      <html>
+        <head />
+        <body>
+          <span>hello world</span>
+          <span>!</span>
+        </body>
       </html>,
     );
   });
