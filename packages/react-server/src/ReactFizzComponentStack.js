@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {ReactComponentInfo} from 'shared/ReactTypes';
+import type {ReactComponentInfo, ReactAsyncInfo} from 'shared/ReactTypes';
 import type {LazyComponent} from 'react/src/ReactLazy';
 
 import {
@@ -26,10 +26,7 @@ import {
   REACT_VIEW_TRANSITION_TYPE,
 } from 'shared/ReactSymbols';
 
-import {
-  enableOwnerStacks,
-  enableViewTransition,
-} from 'shared/ReactFeatureFlags';
+import {enableViewTransition} from 'shared/ReactFeatureFlags';
 
 import {formatOwnerStack} from 'shared/ReactOwnerStackFrames';
 
@@ -40,7 +37,8 @@ export type ComponentStackNode = {
     | string
     | Function
     | LazyComponent<any, any>
-    | ReactComponentInfo,
+    | ReactComponentInfo
+    | ReactAsyncInfo,
   owner?: null | ReactComponentInfo | ComponentStackNode, // DEV only
   stack?: null | string | Error, // DEV only
 };
@@ -89,7 +87,7 @@ function describeComponentStackByType(
       }
     }
     if (typeof type.name === 'string') {
-      return describeDebugInfoFrame(type.name, type.env);
+      return describeDebugInfoFrame(type.name, type.env, type.debugLocation);
     }
   }
   switch (type) {
@@ -134,7 +132,7 @@ function describeFunctionComponentFrameWithoutLineNumber(fn: Function): string {
 export function getOwnerStackByComponentStackNodeInDev(
   componentStack: ComponentStackNode,
 ): string {
-  if (!enableOwnerStacks || !__DEV__) {
+  if (!__DEV__) {
     return '';
   }
   try {

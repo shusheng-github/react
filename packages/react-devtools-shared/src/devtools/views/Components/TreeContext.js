@@ -148,6 +148,7 @@ const TreeStateContext: ReactContext<StateContext> =
   createContext<StateContext>(((null: any): StateContext));
 TreeStateContext.displayName = 'TreeStateContext';
 
+// TODO: `dispatch` is an Action and should be named accordingly.
 const TreeDispatcherContext: ReactContext<DispatcherContext> =
   createContext<DispatcherContext>(((null: any): DispatcherContext));
 TreeDispatcherContext.displayName = 'TreeDispatcherContext';
@@ -802,6 +803,45 @@ type Props = {
   defaultInspectedElementIndex?: ?number,
 };
 
+function getInitialState({
+  defaultOwnerID,
+  defaultInspectedElementID,
+  defaultInspectedElementIndex,
+  store,
+}: {
+  defaultOwnerID?: ?number,
+  defaultInspectedElementID?: ?number,
+  defaultInspectedElementIndex?: ?number,
+  store: Store,
+}): State {
+  return {
+    // Tree
+    numElements: store.numElements,
+    ownerSubtreeLeafElementID: null,
+
+    // Search
+    searchIndex: null,
+    searchResults: [],
+    searchText: '',
+
+    // Owners
+    ownerID: defaultOwnerID == null ? null : defaultOwnerID,
+    ownerFlatTree: null,
+
+    // Inspection element panel
+    inspectedElementID:
+      defaultInspectedElementID != null
+        ? defaultInspectedElementID
+        : store.lastSelectedHostInstanceElementId,
+    inspectedElementIndex:
+      defaultInspectedElementIndex != null
+        ? defaultInspectedElementIndex
+        : store.lastSelectedHostInstanceElementId
+          ? store.getIndexOfElementID(store.lastSelectedHostInstanceElementId)
+          : null,
+  };
+}
+
 // TODO Remove TreeContextController wrapper element once global Context.write API exists.
 function TreeContextController({
   children,
@@ -865,45 +905,32 @@ function TreeContextController({
     [store],
   );
 
-  const [state, dispatch] = useReducer(reducer, {
-    // Tree
-    numElements: store.numElements,
-    ownerSubtreeLeafElementID: null,
-
-    // Search
-    searchIndex: null,
-    searchResults: [],
-    searchText: '',
-
-    // Owners
-    ownerID: defaultOwnerID == null ? null : defaultOwnerID,
-    ownerFlatTree: null,
-
-    // Inspection element panel
-    inspectedElementID:
-      defaultInspectedElementID != null
-        ? defaultInspectedElementID
-        : store.lastSelectedHostInstanceElementId,
-    inspectedElementIndex:
-      defaultInspectedElementIndex != null
-        ? defaultInspectedElementIndex
-        : store.lastSelectedHostInstanceElementId
-          ? store.getIndexOfElementID(store.lastSelectedHostInstanceElementId)
-          : null,
-  });
-  const dispatchWrapper = useMemo(
-    () => (action: Action) => startTransition(() => dispatch(action)),
+  const [state, dispatch] = useReducer(
+    reducer,
+    {
+      defaultOwnerID,
+      defaultInspectedElementID,
+      defaultInspectedElementIndex,
+      store,
+    },
+    getInitialState,
+  );
+  const transitionDispatch = useMemo(
+    () => (action: Action) =>
+      startTransition(() => {
+        dispatch(action);
+      }),
     [dispatch],
   );
 
   // Listen for host element selections.
   useEffect(() => {
     const handler = (id: Element['id']) =>
-      dispatchWrapper({type: 'SELECT_ELEMENT_BY_ID', payload: id});
+      transitionDispatch({type: 'SELECT_ELEMENT_BY_ID', payload: id});
 
     store.addListener('hostInstanceSelected', handler);
     return () => store.removeListener('hostInstanceSelected', handler);
-  }, [store, dispatchWrapper]);
+  }, [store, transitionDispatch]);
 
   // If a newly-selected search result or inspection selection is inside of a collapsed subtree, auto expand it.
   // This needs to be a layout effect to avoid temporarily flashing an incorrect selection.
@@ -927,7 +954,7 @@ function TreeContextController({
       Array<number>,
       Map<number, number>,
     ]) => {
-      dispatchWrapper({
+      dispatch({
         type: 'HANDLE_STORE_MUTATION',
         payload: [addedElementIDs, removedElementIDs],
       });
@@ -938,7 +965,7 @@ function TreeContextController({
       // At the moment, we can treat this as a mutation.
       // We don't know which Elements were newly added/removed, but that should be okay in this case.
       // It would only impact the search state, which is unlikely to exist yet at this point.
-      dispatchWrapper({
+      dispatch({
         type: 'HANDLE_STORE_MUTATION',
         payload: [[], new Map()],
       });
@@ -946,11 +973,11 @@ function TreeContextController({
 
     store.addListener('mutated', handleStoreMutated);
     return () => store.removeListener('mutated', handleStoreMutated);
-  }, [dispatchWrapper, initialRevision, store]);
+  }, [dispatch, initialRevision, store]);
 
   return (
     <TreeStateContext.Provider value={state}>
-      <TreeDispatcherContext.Provider value={dispatchWrapper}>
+      <TreeDispatcherContext.Provider value={transitionDispatch}>
         {children}
       </TreeDispatcherContext.Provider>
     </TreeStateContext.Provider>
@@ -968,7 +995,14 @@ function recursivelySearchTree(
     return;
   }
 
-  const {children, displayName, hocDisplayNames, compiledWithForget} = element;
+  const {
+    children,
+    displayName,
+    hocDisplayNames,
+    compiledWithForget,
+    key,
+    nameProp,
+  } = element;
   if (displayName != null && regExp.test(displayName) === true) {
     searchResults.push(elementID);
   } else if (
@@ -978,6 +1012,10 @@ function recursivelySearchTree(
   ) {
     searchResults.push(elementID);
   } else if (compiledWithForget && regExp.test('Forget')) {
+    searchResults.push(elementID);
+  } else if (typeof key === 'string' && regExp.test(key)) {
+    searchResults.push(elementID);
+  } else if (typeof nameProp === 'string' && regExp.test(nameProp)) {
     searchResults.push(elementID);
   }
 

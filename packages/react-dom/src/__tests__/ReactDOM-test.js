@@ -545,7 +545,6 @@ describe('ReactDOM', () => {
       // ReactDOM(App > div > span)
       'Invalid ARIA attribute `ariaTypo`. ARIA attributes follow the pattern aria-* and must be lowercase.\n' +
         '    in span (at **)\n' +
-        (gate(flags => flags.enableOwnerStacks) ? '' : '    in div (at **)\n') +
         '    in App (at **)',
       // ReactDOM(App > div > ServerEntry) >>> ReactDOMServer(Child) >>> ReactDOMServer(App2) >>> ReactDOMServer(blink)
       'Invalid ARIA attribute `ariaTypo2`. ARIA attributes follow the pattern aria-* and must be lowercase.\n' +
@@ -562,7 +561,6 @@ describe('ReactDOM', () => {
       // ReactDOM(App > div > font)
       'Invalid ARIA attribute `ariaTypo5`. ARIA attributes follow the pattern aria-* and must be lowercase.\n' +
         '    in font (at **)\n' +
-        (gate(flags => flags.enableOwnerStacks) ? '' : '    in div (at **)\n') +
         '    in App (at **)',
     ]);
   });
@@ -600,10 +598,6 @@ describe('ReactDOM', () => {
     expect(document.documentElement.outerHTML).toBe(
       '<html lang="en"><head data-h=""><meta itemprop="" content="head"></head><body data-b=""><div>before</div><div>inside</div><div>after</div></body></html>',
     );
-
-    // @TODO remove this warning check when we loosen the tag nesting restrictions to allow arbitrary tags at the
-    // root of the application
-    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <#document>']);
 
     await act(() => {
       root.render(<App phase={1} />);
@@ -666,10 +660,6 @@ describe('ReactDOM', () => {
       '<html><head data-h=""><meta itemprop="" content="head"></head><body data-b=""><div>before</div><div>inside</div><div>after</div></body></html>',
     );
 
-    // @TODO remove this warning check when we loosen the tag nesting restrictions to allow arbitrary tags at the
-    // root of the application
-    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <html>']);
-
     await act(() => {
       root.render(<App phase={1} />);
     });
@@ -728,10 +718,6 @@ describe('ReactDOM', () => {
     expect(document.documentElement.outerHTML).toBe(
       '<html><head data-h=""><meta itemprop="" content="head"></head><body><div>before</div><div>inside</div><div>after</div></body></html>',
     );
-
-    // @TODO remove this warning check when we loosen the tag nesting restrictions to allow arbitrary tags at the
-    // root of the application
-    assertConsoleErrorDev(['In HTML, <head> cannot be a child of <body>']);
 
     await act(() => {
       root.render(<App phase={1} />);

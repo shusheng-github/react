@@ -127,9 +127,6 @@ describe('ReactDOMServerHydration', () => {
       // Now simulate a situation where the app is not idempotent. React should
       // warn but do the right thing.
       element.innerHTML = lastMarkup;
-      const favorSafetyOverHydrationPerf = gate(
-        flags => flags.favorSafetyOverHydrationPerf,
-      );
       root = await act(() => {
         return ReactDOMClient.hydrateRoot(
           element,
@@ -144,36 +141,10 @@ describe('ReactDOMServerHydration', () => {
           },
         );
       });
-      assertConsoleErrorDev(
-        favorSafetyOverHydrationPerf
-          ? []
-          : [
-              "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
-                "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
-                '\n' +
-                "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
-                "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
-                "- Date formatting in a user's locale which doesn't match the server.\n" +
-                '- External changing data without sending a snapshot of it along with the HTML.\n' +
-                '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
-                'installed which messes with the HTML before React loaded.\n' +
-                '\n' +
-                'https://react.dev/link/hydration-mismatch\n' +
-                '\n' +
-                '  <TestComponent name="y" ref={function ref}>\n' +
-                '    <span ref={{current:null}} onClick={function}>\n' +
-                '+     y\n' +
-                '-     x\n',
-            ],
-        {withoutStack: true},
-      );
+
       expect(mountCount).toEqual(4);
       expect(element.innerHTML.length > 0).toBe(true);
-      if (favorSafetyOverHydrationPerf) {
-        expect(element.innerHTML).not.toEqual(lastMarkup);
-      } else {
-        expect(element.innerHTML).toEqual(lastMarkup);
-      }
+      expect(element.innerHTML).not.toEqual(lastMarkup);
 
       // Ensure the events system works after markup mismatch.
       expect(numClicks).toEqual(1);
@@ -239,9 +210,6 @@ describe('ReactDOMServerHydration', () => {
     const onFocusAfterHydration = jest.fn();
     element.firstChild.focus = onFocusBeforeHydration;
 
-    const favorSafetyOverHydrationPerf = gate(
-      flags => flags.favorSafetyOverHydrationPerf,
-    );
     await act(() => {
       ReactDOMClient.hydrateRoot(
         element,
@@ -251,28 +219,6 @@ describe('ReactDOMServerHydration', () => {
         {onRecoverableError: error => {}},
       );
     });
-    assertConsoleErrorDev(
-      favorSafetyOverHydrationPerf
-        ? []
-        : [
-            "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
-              "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
-              '\n' +
-              "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
-              "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
-              "- Date formatting in a user's locale which doesn't match the server.\n" +
-              '- External changing data without sending a snapshot of it along with the HTML.\n' +
-              '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
-              'installed which messes with the HTML before React loaded.\n' +
-              '\n' +
-              'https://react.dev/link/hydration-mismatch\n' +
-              '\n' +
-              '  <button autoFocus={false} onFocus={function mockConstructor}>\n' +
-              '+   client\n' +
-              '-   server\n',
-          ],
-      {withoutStack: true},
-    );
 
     expect(onFocusBeforeHydration).not.toHaveBeenCalled();
     expect(onFocusAfterHydration).not.toHaveBeenCalled();
@@ -294,31 +240,29 @@ describe('ReactDOMServerHydration', () => {
         />,
       );
     });
-    assertConsoleErrorDev(
-      [
-        "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
-          "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
-          '\n' +
-          "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
-          "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
-          "- Date formatting in a user's locale which doesn't match the server.\n" +
-          '- External changing data without sending a snapshot of it along with the HTML.\n' +
-          '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
-          'installed which messes with the HTML before React loaded.\n' +
-          '\n' +
-          'https://react.dev/link/hydration-mismatch\n' +
-          '\n' +
-          '  <div\n    style={{\n+     textDecoration: "none"\n' +
-          '+     color: "white"\n' +
-          '-     color: "black"\n' +
-          '+     height: "10px"\n' +
-          '-     height: "10px"\n' +
-          '-     text-decoration: "none"\n' +
-          '    }}\n' +
-          '  >\n',
-      ],
-      {withoutStack: true},
-    );
+    assertConsoleErrorDev([
+      "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
+        "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
+        '\n' +
+        "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
+        "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
+        "- Date formatting in a user's locale which doesn't match the server.\n" +
+        '- External changing data without sending a snapshot of it along with the HTML.\n' +
+        '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
+        'installed which messes with the HTML before React loaded.\n' +
+        '\n' +
+        'https://react.dev/link/hydration-mismatch\n' +
+        '\n' +
+        '  <div\n    style={{\n+     textDecoration: "none"\n' +
+        '+     color: "white"\n' +
+        '-     color: "black"\n' +
+        '+     height: "10px"\n' +
+        '-     height: "10px"\n' +
+        '-     text-decoration: "none"\n' +
+        '    }}\n' +
+        '  >\n' +
+        '\n    in div (at **)',
+    ]);
   });
 
   it('should not warn when the style property differs on whitespace or order in IE', async () => {
@@ -362,33 +306,31 @@ describe('ReactDOMServerHydration', () => {
         />,
       );
     });
-    assertConsoleErrorDev(
-      [
-        "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
-          "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
-          '\n' +
-          "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
-          "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
-          "- Date formatting in a user's locale which doesn't match the server.\n" +
-          '- External changing data without sending a snapshot of it along with the HTML.\n' +
-          '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
-          'installed which messes with the HTML before React loaded.\n' +
-          '\n' +
-          'https://react.dev/link/hydration-mismatch\n' +
-          '\n' +
-          '  <div\n' +
-          '    style={{\n' +
-          '+     textDecoration: "none"\n' +
-          '+     color: "black"\n' +
-          '-     color: "black"\n' +
-          '+     height: "10px"\n' +
-          '-     height: "10px"\n' +
-          '-     text-decoration: "none"\n' +
-          '    }}\n' +
-          '  >\n',
-      ],
-      {withoutStack: true},
-    );
+    assertConsoleErrorDev([
+      "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
+        "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
+        '\n' +
+        "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
+        "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
+        "- Date formatting in a user's locale which doesn't match the server.\n" +
+        '- External changing data without sending a snapshot of it along with the HTML.\n' +
+        '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
+        'installed which messes with the HTML before React loaded.\n' +
+        '\n' +
+        'https://react.dev/link/hydration-mismatch\n' +
+        '\n' +
+        '  <div\n' +
+        '    style={{\n' +
+        '+     textDecoration: "none"\n' +
+        '+     color: "black"\n' +
+        '-     color: "black"\n' +
+        '+     height: "10px"\n' +
+        '-     height: "10px"\n' +
+        '-     text-decoration: "none"\n' +
+        '    }}\n' +
+        '  >\n' +
+        '\n    in div (at **)',
+    ]);
   });
 
   it('should throw rendering portals on the server', () => {
@@ -621,9 +563,6 @@ describe('ReactDOMServerHydration', () => {
     );
     domElement.innerHTML = markup;
 
-    const favorSafetyOverHydrationPerf = gate(
-      flags => flags.favorSafetyOverHydrationPerf,
-    );
     await act(() => {
       ReactDOMClient.hydrateRoot(
         domElement,
@@ -633,35 +572,8 @@ describe('ReactDOMServerHydration', () => {
         {onRecoverableError: error => {}},
       );
     });
-    assertConsoleErrorDev(
-      favorSafetyOverHydrationPerf
-        ? []
-        : [
-            "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. " +
-              "This won't be patched up. This can happen if a SSR-ed Client Component used:\n" +
-              '\n' +
-              "- A server/client branch `if (typeof window !== 'undefined')`.\n" +
-              "- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.\n" +
-              "- Date formatting in a user's locale which doesn't match the server.\n" +
-              '- External changing data without sending a snapshot of it along with the HTML.\n' +
-              '- Invalid HTML tag nesting.\n\nIt can also happen if the client has a browser extension ' +
-              'installed which messes with the HTML before React loaded.\n' +
-              '\n' +
-              'https://react.dev/link/hydration-mismatch\n' +
-              '\n' +
-              '  <div dangerouslySetInnerHTML={undefined}>\n' +
-              '    <p>\n' +
-              '+     client\n' +
-              '-     server\n',
-          ],
-      {withoutStack: true},
-    );
 
-    if (favorSafetyOverHydrationPerf) {
-      expect(domElement.innerHTML).not.toEqual(markup);
-    } else {
-      expect(domElement.innerHTML).toEqual(markup);
-    }
+    expect(domElement.innerHTML).not.toEqual(markup);
   });
 
   it('should warn if innerHTML mismatches with dangerouslySetInnerHTML=undefined on the client', async () => {

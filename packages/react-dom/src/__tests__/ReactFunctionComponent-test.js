@@ -116,7 +116,6 @@ describe('ReactFunctionComponent', () => {
         '    in GrandParent (at **)',
       'Child uses the legacy contextTypes API which will soon be removed. ' +
         'Use React.createContext() with static contextType instead. (https://react.dev/link/legacy-context)\n' +
-        (gate('enableOwnerStacks') ? '' : '    in Child (at **)\n') +
         '    in Parent (at **)\n' +
         '    in GrandParent (at **)',
     ]);
@@ -206,27 +205,6 @@ describe('ReactFunctionComponent', () => {
     ]);
   });
 
-  // @gate !disableDefaultPropsExceptForClasses
-  it('should support default props', async () => {
-    function Child(props) {
-      return <div>{props.test}</div>;
-    }
-    Child.defaultProps = {test: 2};
-
-    const container = document.createElement('div');
-    const root = ReactDOMClient.createRoot(container);
-
-    await act(() => {
-      root.render(<Child />);
-    });
-    expect(container.textContent).toBe('2');
-    assertConsoleErrorDev([
-      'Child: Support for defaultProps will be removed from function components in a future major release. ' +
-        'Use JavaScript default parameters instead.\n' +
-        '    in Child (at **)',
-    ]);
-  });
-
   // @gate !disableLegacyContext && !disableLegacyContextForFunctionComponents
   it('should receive context', async () => {
     class Parent extends React.Component {
@@ -260,7 +238,6 @@ describe('ReactFunctionComponent', () => {
         '    in Parent (at **)',
       'Child uses the legacy contextTypes API which will be removed soon. ' +
         'Use React.createContext() with React.useContext() instead. (https://react.dev/link/legacy-context)\n' +
-        '    in Child (at **)\n' +
         '    in Parent (at **)',
     ]);
     expect(el.textContent).toBe('en');

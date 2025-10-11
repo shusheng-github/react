@@ -184,6 +184,10 @@ describe('ReactFabric', () => {
       nativeFabricUIManager.cloneNodeWithNewChildrenAndProps,
     ).not.toBeCalled();
 
+    jest
+      .spyOn(ReactNativePrivateInterface, 'diffAttributePayloads')
+      .mockReturnValue({bar: 'b'});
+
     await act(() => {
       ReactFabric.render(
         <Text foo="a" bar="b">
@@ -203,6 +207,9 @@ describe('ReactFabric', () => {
  RCTText {"foo":"a","bar":"b"}
    RCTRawText {"text":"1"}`);
 
+    jest
+      .spyOn(ReactNativePrivateInterface, 'diffAttributePayloads')
+      .mockReturnValue({foo: 'b'});
     await act(() => {
       ReactFabric.render(
         <Text foo="b" bar="b">
@@ -280,7 +287,6 @@ describe('ReactFabric', () => {
     expect(nativeFabricUIManager.completeRoot).toBeCalled();
   });
 
-  // @gate enablePersistedModeClonedFlag
   it('should not clone nodes when layout effects are used', async () => {
     const View = createReactNativeComponentClass('RCTView', () => ({
       validAttributes: {foo: true},
@@ -298,6 +304,8 @@ describe('ReactFabric', () => {
           <ComponentWithEffect />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.completeRoot).toBeCalled();
@@ -309,6 +317,8 @@ describe('ReactFabric', () => {
           <ComponentWithEffect />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.cloneNode).not.toBeCalled();
@@ -320,7 +330,6 @@ describe('ReactFabric', () => {
     expect(nativeFabricUIManager.completeRoot).not.toBeCalled();
   });
 
-  // @gate enablePersistedModeClonedFlag
   it('should not clone nodes when insertion effects are used', async () => {
     const View = createReactNativeComponentClass('RCTView', () => ({
       validAttributes: {foo: true},
@@ -338,6 +347,8 @@ describe('ReactFabric', () => {
           <ComponentWithRef />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.completeRoot).toBeCalled();
@@ -349,6 +360,8 @@ describe('ReactFabric', () => {
           <ComponentWithRef />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.cloneNode).not.toBeCalled();
@@ -360,7 +373,6 @@ describe('ReactFabric', () => {
     expect(nativeFabricUIManager.completeRoot).not.toBeCalled();
   });
 
-  // @gate enablePersistedModeClonedFlag
   it('should not clone nodes when useImperativeHandle is used', async () => {
     const View = createReactNativeComponentClass('RCTView', () => ({
       validAttributes: {foo: true},
@@ -380,6 +392,8 @@ describe('ReactFabric', () => {
           <ComponentWithImperativeHandle ref={ref} />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.completeRoot).toBeCalled();
@@ -392,6 +406,8 @@ describe('ReactFabric', () => {
           <ComponentWithImperativeHandle ref={ref} />
         </View>,
         11,
+        null,
+        true,
       ),
     );
     expect(nativeFabricUIManager.cloneNode).not.toBeCalled();
@@ -612,7 +628,7 @@ describe('ReactFabric', () => {
       ReactFabric.render(<Component chars={before} />, 11, null, true);
     });
     expect(nativeFabricUIManager.__dumpHierarchyForJestTestsOnly()).toBe(`11
- RCTView null
+ RCTView {}
    RCTView {"title":"a"}
    RCTView {"title":"b"}
    RCTView {"title":"c"}
@@ -638,7 +654,7 @@ describe('ReactFabric', () => {
       ReactFabric.render(<Component chars={after} />, 11, null, true);
     });
     expect(nativeFabricUIManager.__dumpHierarchyForJestTestsOnly()).toBe(`11
- RCTView null
+ RCTView {}
    RCTView {"title":"m"}
    RCTView {"title":"x"}
    RCTView {"title":"h"}
@@ -700,8 +716,8 @@ describe('ReactFabric', () => {
     });
     expect(nativeFabricUIManager.__dumpHierarchyForJestTestsOnly()).toBe(
       `11
- RCTView null
-   RCTView null
+ RCTView {}
+   RCTView {}
      RCTView {"title":"a"}
      RCTView {"title":"b"}
      RCTView {"title":"c"}
@@ -732,8 +748,8 @@ describe('ReactFabric', () => {
       });
     });
     expect(nativeFabricUIManager.__dumpHierarchyForJestTestsOnly()).toBe(`11
- RCTView null
-   RCTView null
+ RCTView {}
+   RCTView {}
      RCTView {"title":"m"}
      RCTView {"title":"x"}
      RCTView {"title":"h"}
@@ -875,10 +891,7 @@ describe('ReactFabric', () => {
     });
     assertConsoleErrorDev([
       'Text strings must be rendered within a <Text> component.\n' +
-        '    in RCTScrollView (at **)' +
-        (gate(flags => !flags.enableOwnerStacks)
-          ? '\n    in RCTText (at **)'
-          : ''),
+        '    in RCTScrollView (at **)',
     ]);
   });
 
